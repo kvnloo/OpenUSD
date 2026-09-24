@@ -426,8 +426,7 @@ _ApplyLayerOffsetToRefOrPayloadListOp(
                 // stacks, earlier automatic scales affect how later authored
                 // translations compose, so scaling the translation back would
                 // change the resulting animation start time.
-                if (!refOrPayload.GetAssetPath().empty() &&
-                    !PcpIsTimeScalingForLayerTimeCodesPerSecondDisabled()) {
+                if (!refOrPayload.GetAssetPath().empty()) {
                     const auto &layers = context.layerStack->GetLayers();
                     if (TF_VERIFY(sourceLayerIndex < layers.size())) {
                         const SdfLayerHandle &sourceLayer =
