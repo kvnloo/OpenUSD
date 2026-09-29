@@ -1,0 +1,72 @@
+[
+  {
+    "id": "select-prim",
+    "goal": "Select /World/Car",
+    "stock_hint": "Use the prim tree or interpreter.",
+    "palette_text": "select /World/Car",
+    "voice_text": "select /World/Car"
+  },
+  {
+    "id": "clear-selection",
+    "goal": "Clear the current prim selection",
+    "stock_hint": "Use usdview's existing selection UI.",
+    "palette_text": "clear selection",
+    "voice_text": "clear selection"
+  },
+  {
+    "id": "inspect-property",
+    "goal": "Identify the currently selected property",
+    "stock_hint": "Use the attribute/property panels.",
+    "palette_text": "what property is selected",
+    "voice_text": "what property is selected"
+  },
+  {
+    "id": "property-value",
+    "goal": "Read the selected property's current value",
+    "stock_hint": "Use the attribute inspector.",
+    "palette_text": "what is the selected property value",
+    "voice_text": "what is the selected property value"
+  },
+  {
+    "id": "property-provenance",
+    "goal": "Inspect the selected property's authored opinion stack",
+    "stock_hint": "Use Composition/property inspection or the interpreter.",
+    "palette_text": "where is this property authored",
+    "voice_text": "where is this property authored"
+  },
+  {
+    "id": "composition-stack",
+    "goal": "Inspect composition opinions for /World/Car",
+    "stock_hint": "Select the prim and use the Composition panel.",
+    "palette_text": "show composition for /World/Car",
+    "voice_text": "show composition for /World/Car"
+  },
+  {
+    "id": "variants",
+    "goal": "Inspect variant selections for /World/Car",
+    "stock_hint": "Use the prim/property UI.",
+    "palette_text": "show variants on /World/Car",
+    "voice_text": "show variants on /World/Car"
+  },
+  {
+    "id": "viewer-mode",
+    "goal": "Enable viewer mode",
+    "stock_hint": "Use usdview's existing viewer-mode control.",
+    "palette_text": "viewer mode on",
+    "voice_text": "viewer mode on"
+  },
+  {
+    "id": "current-selection",
+    "goal": "Report what is selected",
+    "stock_hint": "Read the prim tree or interpreter.",
+    "palette_text": "what is selected",
+    "voice_text": "what is selected"
+  },
+  {
+    "id": "current-frame",
+    "goal": "Report the current frame",
+    "stock_hint": "Read the timeline or interpreter.",
+    "palette_text": "what frame am i on",
+    "voice_text": "what frame am i on"
+  }
+]
