@@ -52,6 +52,7 @@ class ActionPreviewDialog(QtWidgets.QDialog):
         self._clientSentUnix = clientSentUnix
         self._shownPerf = None
         self._paintRecorded = False
+        self._invalidReason = None
 
         self.setWindowTitle("Voice action preview")
         self.setModal(False)
@@ -76,6 +77,10 @@ class ActionPreviewDialog(QtWidgets.QDialog):
             "No supported deterministic action")
         actionView.setMaximumHeight(110)
         layout.addWidget(actionView)
+
+        self._status = QtWidgets.QLabel("", self)
+        self._status.setWordWrap(True)
+        layout.addWidget(self._status)
 
         buttons = QtWidgets.QDialogButtonBox(self)
         self._accept = buttons.addButton(
@@ -121,17 +126,22 @@ class ActionPreviewDialog(QtWidgets.QDialog):
         if self._decision.action is None:
             return
 
-        if not self._acceptGuard():
+        if self._invalidReason is not None or not self._acceptGuard():
             fields = self._receipt_fields()
             fields["preview_to_accept_ms"] = _latency_ms(
                 self._shownPerf)
+            fields["reason"] = (
+                self._invalidReason or
+                "generation gate rejected")
             record_event(
                 self._api,
                 "voice_preview_stale_accept_blocked",
                 fields)
+            self._status.setText(
+                "Blocked: stale/cancelled utterance. No action was executed.")
+            self._accept.setEnabled(False)
             self._api.PrintStatus(
                 "Usdview Labs voice: stale/cancelled utterance blocked")
-            self.reject()
             return
 
         result = execute_with_receipt(
@@ -166,7 +176,27 @@ class ActionPreviewDialog(QtWidgets.QDialog):
             fields)
         self.reject()
 
+    def invalidateFromBridge(self, reason):
+        """Mark this proposal stale but keep it inspectable/click-testable."""
+        if self._invalidReason is not None:
+            return
+
+        self._invalidReason = str(reason)
+        self._status.setText(
+            "Stale/cancelled: {}. Accept will be blocked.".format(
+                self._invalidReason))
+
+        fields = self._receipt_fields()
+        fields["reason"] = self._invalidReason
+        fields["preview_to_cancel_ms"] = _latency_ms(
+            self._shownPerf)
+        record_event(
+            self._api,
+            "voice_preview_invalidated",
+            fields)
+
     def cancelFromBridge(self, reason):
+        """Hard-close path used only when the bridge itself is stopping."""
         fields = self._receipt_fields()
         fields["reason"] = str(reason)
         fields["preview_to_cancel_ms"] = _latency_ms(

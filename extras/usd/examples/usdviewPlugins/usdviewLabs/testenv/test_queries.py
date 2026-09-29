@@ -117,6 +117,14 @@ class _Stage(object):
         return _Prim(path=path, valid=False)
 
 
+class _TimeCode(object):
+    def __init__(self, value):
+        self._value = value
+
+    def GetValue(self):
+        return self._value
+
+
 class _Api(object):
     def __init__(self):
         self.selectedPaths = ["/World/Car"]
@@ -149,6 +157,14 @@ class QueriesTest(unittest.TestCase):
         self.assertEqual(
             execute_query(self.api, query).value,
             24.0)
+
+    def test_frame_query_accepts_timecode_object(self):
+        self.api.frame = _TimeCode(0.0)
+        query = route_query_text("what frame am i on")
+        result = execute_query(self.api, query)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.value, 0.0)
+        self.assertEqual(result.message, "Current frame: 0.0")
 
     def test_prim_type_query(self):
         query = route_query_text(

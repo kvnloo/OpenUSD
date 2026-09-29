@@ -47,7 +47,10 @@ def capture_hud_state(usdviewApi):
     validations = _safe(lambda: len(usdviewApi.validationErrors), 0)
 
     try:
-        frame = float(usdviewApi.frame)
+        frame = usdviewApi.frame
+        if hasattr(frame, "GetValue"):
+            frame = frame.GetValue()
+        frame = float(frame)
     except Exception:
         frame = None
 

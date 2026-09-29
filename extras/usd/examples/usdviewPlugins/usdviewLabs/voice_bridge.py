@@ -174,6 +174,7 @@ class VoiceBridgeController(QtCore.QObject):
         self._endpointPath = None
         self._preview = None
         self._previewGeneration = None
+        self._retiredPreviews = []
 
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(_POLL_MS)
@@ -317,7 +318,7 @@ class VoiceBridgeController(QtCore.QObject):
     def stop(self, *_args):
         self._timer.stop()
 
-        self._cancel_preview(
+        self._close_all_previews(
             "voice bridge stopped")
 
         oldServer = self._server
@@ -352,23 +353,23 @@ class VoiceBridgeController(QtCore.QObject):
             pass
 
     def _poll(self):
-        latest = None
-
+        # Preserve every accepted lifecycle event in FIFO order. The
+        # GenerationGate was already updated on the socket thread, so handling
+        # all queued events here keeps receipts/UI state complete without
+        # weakening stale-execution safety.
         while True:
             try:
-                latest = self._queue.get_nowait()
+                message = self._queue.get_nowait()
             except queue.Empty:
                 break
-
-        if latest is not None:
-            self._handle(latest)
+            self._handle(message)
 
     def _handle(self, message):
         op = message["op"]
         generation = int(message["generation"])
 
         if op == "start":
-            self._cancel_preview(
+            self._invalidate_preview(
                 "superseded by generation {}".format(generation))
             record_event(self._api, "voice_generation_start", {
                 "generation": generation,
@@ -376,7 +377,7 @@ class VoiceBridgeController(QtCore.QObject):
             return
 
         if op == "cancel":
-            self._cancel_preview(
+            self._invalidate_preview(
                 "generation {} cancelled".format(generation))
             record_event(self._api, "voice_generation_cancel", {
                 "generation": generation,
@@ -395,7 +396,7 @@ class VoiceBridgeController(QtCore.QObject):
             })
             return
 
-        self._cancel_preview(
+        self._invalidate_preview(
             "superseded by newer final")
 
         transcript = message["transcript"]
@@ -477,12 +478,49 @@ class VoiceBridgeController(QtCore.QObject):
             self._preview = None
             self._previewGeneration = None
 
-    def _cancel_preview(self, reason):
+        try:
+            self._retiredPreviews.remove(dialog)
+        except ValueError:
+            pass
+
+    def _invalidate_preview(self, reason):
+        """Retire the current preview without hiding stale action evidence."""
         dialog = self._preview
         self._preview = None
         self._previewGeneration = None
 
-        if dialog is not None:
+        if dialog is None:
+            return
+
+        if hasattr(dialog, "invalidateFromBridge"):
+            try:
+                dialog.invalidateFromBridge(reason)
+                self._retiredPreviews.append(dialog)
+                return
+            except Exception:
+                pass
+
+        # Read-only answers do not need a stale Accept path, and this remains
+        # the fallback for unexpected dialog types.
+        try:
+            dialog.cancelFromBridge(reason)
+        except Exception:
+            try:
+                dialog.reject()
+            except Exception:
+                pass
+
+    def _close_all_previews(self, reason):
+        dialogs = []
+        if self._preview is not None:
+            dialogs.append(self._preview)
+        dialogs.extend(self._retiredPreviews)
+
+        self._preview = None
+        self._previewGeneration = None
+        self._retiredPreviews = []
+
+        for dialog in dialogs:
             try:
                 dialog.cancelFromBridge(reason)
             except Exception:
