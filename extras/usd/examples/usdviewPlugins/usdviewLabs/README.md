@@ -4,18 +4,14 @@ Fork-local UX experiment surface for `usdview`.
 
 ## P0 — typed command palette
 
-`Ctrl+K` opens a dependency-free command palette that can fuzzy-search
-commands/prim paths, select prims through `UsdviewApi`, toggle viewer mode,
-clear selection, and emit append-only experiment receipts.
-
-All effects pass through a small typed `UsdAction` whitelist. There is no
-arbitrary Python execution path.
+`Ctrl+K` opens a dependency-free command palette that fuzzy-searches
+commands/prim paths and executes only whitelisted `UsdAction` values.
 
 ## P1 — measured intent + Jev shadow routing
 
-P1 adds palette latency metrics, a deliberately small deterministic intent
-grammar, bounded read-only context capture, and optional Jev
-`jev-1.13.0` **shadow-only** routing.
+Adds palette latency metrics, a small deterministic intent grammar, bounded
+read-only context capture, and optional Jev `jev-1.13.0` **shadow-only**
+routing.
 
 Jev is disabled by default:
 
@@ -23,144 +19,167 @@ Jev is disabled by default:
 export USDVIEW_LABS_JEV_SHADOW=1
 ```
 
-The adapter uses `jevkit.client` + `jevkit.keystore`, captures the served
-model revision, runs off the UI thread, and never executes its proposed action.
+Model output is never executed in these experiments.
 
 ## P2 — local realtime-voice bridge
 
-Start from:
+`Labs -> Start Voice Bridge` starts a loopback-only transcript endpoint.
 
-```text
-Labs -> Start Voice Bridge
-```
+The bridge:
 
-The bridge binds only to `127.0.0.1`, chooses an ephemeral port by default,
-generates a fresh capability token, writes a mode-`0600` discovery file where
-supported, accepts transcript text only, bounds message/queue size, and returns
-all routing/UI work to the Qt main thread.
+- binds only to `127.0.0.1`;
+- uses a fresh capability token;
+- writes a private discovery file where supported;
+- accepts transcript text only;
+- bounds message size and queue depth;
+- returns all usdview interaction to the Qt main thread;
+- requires explicit **Accept / Reject** before mutable actions execute.
 
-Every mutable action still requires an explicit **Accept / Reject** preview.
+## P3 — interruption safety + read-only Q&A
 
-## P3 — push-to-talk lifecycle, interruption, and read-only Q&A
-
-P3 upgrades the endpoint protocol to generation-aware lifecycle events:
+Voice protocol v2 uses one monotonic generation per utterance:
 
 ```text
 start -> partial* -> final
    \----------------> cancel
 ```
 
-Each utterance carries a monotonically increasing `generation`.
+A socket-thread `GenerationGate` invalidates stale/cancelled generations.
+The Accept button checks that gate again immediately before execution, so a
+cancel that arrives after preview paint still blocks the action.
 
-The socket thread updates a thread-safe generation gate immediately on message
-arrival. A preview's Accept button checks that gate again immediately before
-execution. This means:
+Read-only questions use a separate `UsdQuery` type with no mutation executor.
 
-- a newer utterance invalidates every older preview;
-- `cancel` wins over a later/replayed `start` or `final` from the same generation;
-- stale generations are rejected before they reach Qt;
-- a cancel arriving after preview paint but before Accept still blocks execution.
+## P4 — composition inspector + hold-to-talk + dogfood harness
 
-### Protocol v2
+### Rich read-only inspection
 
-Read:
+P4 expands `UsdQuery` with bounded inspection of:
 
 ```text
-<usdview config>/usdview-labs/voice-endpoint.json
+what property is selected
+what is the selected property value
+where is this property authored
+list properties on /World/Car
+show composition for /World/Car
+show variants on /World/Car
 ```
 
-Example lifecycle messages:
+The property stack and prim stack are capped at 50 entries. Large displayed
+values are truncated. Query results are displayed but not persisted in
+receipts.
+
+`where is this property authored` uses the selected property's
+`GetPropertyStack()`. `show composition` uses the selected/path prim's
+`GetPrimStack()`. This is deliberately descriptive evidence rather than a
+claim that one layer explains every composed value.
+
+### Hold-to-talk hotkey
+
+The hotkey is opt-in:
+
+```text
+Labs -> Enable Hold-to-Talk Hotkey
+```
+
+Default binding:
+
+```text
+Ctrl+Shift+Space
+```
+
+Press/release semantics:
+
+```text
+key down    -> PTT start(generation)
+key up      -> PTT stop(generation)
+app loses focus while held -> PTT cancel(generation)
+```
+
+usdview still does **not** own microphone capture or ASR.
+
+Instead, the stage manager creates:
+
+```text
+<usdview config>/usdview-labs/ptt-target.json
+```
+
+with:
 
 ```json
-{"token":"...","op":"start","generation":42}
-{"token":"...","op":"partial","generation":42,"transcript":"select /World"}
-{"token":"...","op":"final","generation":42,"transcript":"select /World/Car"}
+{
+  "protocol": 1,
+  "host": "127.0.0.1",
+  "port": 12345,
+  "token": "..."
+}
 ```
 
-Cancellation:
+Only `127.0.0.1` targets are accepted. PTT sends happen on a daemon worker so
+the Qt event loop does not wait on the stage manager.
 
-```json
-{"token":"...","op":"cancel","generation":42}
+The intended duplex path is:
+
+```text
+Ctrl+Shift+Space
+       |
+       v
+usdview PTT start/stop
+       |
+       v
+local stage manager
+  [owns mic + ASR]
+       |
+       | transcript + same generation
+       v
+usdview voice bridge
+       |
+       +----> read-only UsdQuery
+       |
+       +----> typed UsdAction -> explicit preview -> guarded Accept
+
+Jev ------------------------------------------> shadow only
 ```
 
-Protocol-1 `final: true/false` transcript messages remain accepted for
-compatibility, mapped to generation `0`.
+### P0–P4 dogfood harness
 
-The bundled client supports all four operations:
+A stdlib-only harness emulates the external stage manager without owning a
+microphone:
 
 ```bash
-python extras/usd/examples/usdviewPlugins/usdviewLabs/tools/send_voice_transcript.py \
-  --op final --generation 42 "select /World/Car"
+python extras/usd/examples/usdviewPlugins/usdviewLabs/tools/dogfood_usdview_labs.py \
+  ptt-loop --transcript "what is selected"
 ```
 
-An OMP/Hermes/z0 push-to-talk stage manager should allocate one generation when
-PTT begins, reuse it for partial/final/cancel, then allocate a larger generation
-for the next utterance.
-
-### Read-only scene questions
-
-Questions use a distinct `UsdQuery` type rather than `UsdAction`. The query
-executor has no mutation path.
-
-Current deterministic examples:
+Then in usdview:
 
 ```text
-what is selected
-what frame am I on
-what renderer
-what file is this
-what type is /World/Car
-where is this authored
+Labs -> Start Voice Bridge
+Labs -> Enable Hold-to-Talk Hotkey
 ```
 
-For `where is this authored`, P3 reports the selected Composition-tab
-`Sdf.Spec` layer when available, otherwise the current composition layer. It
-does **not** claim that a generic layer selection proves full value provenance.
+Hold and release `Ctrl+Shift+Space`. The harness receives the PTT lifecycle
+and injects the canned transcript back through the real voice bridge using the
+same generation.
 
-Read-only answers display immediately. Mutable requests continue through the
-explicit action-preview gate.
+For a mutable-path check:
 
-### Voice latency telemetry
-
-P3 records:
-
-- client-send -> preview/result paint when timestamps are sane;
-- bridge-receive -> preview/result paint;
-- preview paint -> Accept / Reject / Cancel;
-- action execution latency (from prior slices);
-- generation start/cancel/stale-drop events.
-
-Raw query/transcript text is still not persisted in experiment receipts;
-correlation uses a short SHA-256 fingerprint plus length.
-
-## Trust boundary
-
-```text
-microphone / ASR / stage manager
-             |
-        transcript only
-             |
-     127.0.0.1 + token
-             |
-       GenerationGate
-             |
-       +-----+------+
-       |            |
-   UsdQuery     deterministic
-  read-only       UsdAction
-       |            |
-    answer       Preview
-                   / \
-              Reject Accept
-                       |
-                    guard()
-                       |
-                   UsdviewApi
-
-Jev ----------------> shadow comparison only
+```bash
+python extras/usd/examples/usdviewPlugins/usdviewLabs/tools/dogfood_usdview_labs.py \
+  ptt-loop --transcript "select /World/Car"
 ```
 
-The socket thread never receives `UsdviewApi`.
+The action must still stop at the explicit preview.
+
+Summarize receipts:
+
+```bash
+python extras/usd/examples/usdviewPlugins/usdviewLabs/tools/dogfood_usdview_labs.py \
+  report
+```
+
+The report surfaces event counts plus p50/p95/max for the available latency
+fields and counts stale/cancelled actions that were blocked.
 
 ## Receipts
 
@@ -170,9 +189,11 @@ Receipts live under:
 <usdview config>/usdview-labs/receipts.jsonl
 ```
 
-They contain action/query outcomes, palette/voice latency, bridge lifecycle,
+They contain action/query outcomes, palette/voice/PTT latency, bridge lifecycle,
 generation cancellation/stale-drop evidence, and Jev shadow metadata when
 explicitly enabled.
+
+Raw palette/voice text is not stored in experiment receipts.
 
 ## Loading
 
@@ -186,11 +207,12 @@ Do not promote or activate a candidate if it:
 
 - adds visible startup cost;
 - stalls the UI on large stages;
-- binds the voice bridge beyond loopback;
+- binds voice/PTT outside loopback;
 - lets an older/cancelled generation execute;
-- accepts caller-supplied actions/code;
+- accepts caller-supplied actions or code;
+- owns microphone capture inside usdview;
 - requires model/provider credentials merely to use usdview;
-- makes a model decision observable as a USD mutation.
+- makes model output observable as a USD mutation.
 
 Provider-specific integrations stay downstream. Only generic UX primitives with
 measured wins should be considered for upstream OpenUSD.

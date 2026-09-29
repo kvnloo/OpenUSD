@@ -8,7 +8,7 @@
 """Typed read-only scene queries for usdview Labs.
 
 UsdQuery is deliberately separate from UsdAction: query execution exposes no
-mutation methods and returns plain data for display/receipts.
+mutation methods and returns bounded plain data for display/receipts.
 """
 
 from __future__ import print_function
@@ -24,6 +24,12 @@ QUERY_RENDERER = "renderer"
 QUERY_STAGE = "stage"
 QUERY_PRIM_TYPE = "prim_type"
 QUERY_CURRENT_LAYER = "current_layer"
+QUERY_SELECTED_PROPERTY = "selected_property"
+QUERY_PROPERTY_VALUE = "property_value"
+QUERY_PROPERTY_STACK = "property_stack"
+QUERY_PRIM_PROPERTIES = "prim_properties"
+QUERY_COMPOSITION = "composition"
+QUERY_VARIANTS = "variants"
 
 SUPPORTED_QUERIES = frozenset({
     QUERY_SELECTION,
@@ -32,9 +38,17 @@ SUPPORTED_QUERIES = frozenset({
     QUERY_STAGE,
     QUERY_PRIM_TYPE,
     QUERY_CURRENT_LAYER,
+    QUERY_SELECTED_PROPERTY,
+    QUERY_PROPERTY_VALUE,
+    QUERY_PROPERTY_STACK,
+    QUERY_PRIM_PROPERTIES,
+    QUERY_COMPOSITION,
+    QUERY_VARIANTS,
 })
 
 _PATH_RE = re.compile(r"(/[A-Za-z0-9_./:{}-]+)")
+_MAX_ITEMS = 50
+_MAX_VALUE_CHARS = 1200
 
 
 class UsdQuery(object):
@@ -61,9 +75,15 @@ class UsdQuery(object):
 QueryResult = namedtuple("QueryResult", "ok value message")
 
 
+def _path_from_text(text):
+    match = _PATH_RE.search(str(text))
+    return match.group(1) if match else None
+
+
 def route_query_text(text, source="voice-query"):
     raw = str(text).strip()
     normalized = " ".join(raw.lower().split())
+    path = _path_from_text(raw)
 
     if normalized in {
             "what is selected",
@@ -94,19 +114,65 @@ def route_query_text(text, source="voice-query"):
         return UsdQuery(QUERY_STAGE, source=source)
 
     if normalized in {
+            "what property is selected",
+            "what's the selected property",
+            "selected property",
+            "show selected property"}:
+        return UsdQuery(QUERY_SELECTED_PROPERTY, source=source)
+
+    if normalized in {
+            "what is the selected property value",
+            "what's the selected property value",
+            "what is its value",
+            "show property value",
+            "selected property value"}:
+        return UsdQuery(QUERY_PROPERTY_VALUE, source=source)
+
+    if normalized in {
+            "where is this property authored",
+            "where does this property come from",
+            "show property stack",
+            "property stack"}:
+        return UsdQuery(QUERY_PROPERTY_STACK, source=source)
+
+    if "properties" in normalized and (
+            path or "selected" in normalized or
+            normalized in {"list properties", "show properties"}):
+        return UsdQuery(
+            QUERY_PRIM_PROPERTIES,
+            {"path": path} if path else {},
+            source=source)
+
+    if (
+            "composition" in normalized or
+            (path and (
+                normalized.startswith("where does ") or
+                normalized.startswith("where is ")))):
+        return UsdQuery(
+            QUERY_COMPOSITION,
+            {"path": path} if path else {},
+            source=source)
+
+    if "variant" in normalized and (
+            path or "selected" in normalized or
+            normalized in {"show variants", "list variants"}):
+        return UsdQuery(
+            QUERY_VARIANTS,
+            {"path": path} if path else {},
+            source=source)
+
+    if normalized in {
             "where is this authored",
             "what layer is this from",
             "current layer",
             "which layer"}:
         return UsdQuery(QUERY_CURRENT_LAYER, source=source)
 
-    if normalized.startswith("what type is "):
-        match = _PATH_RE.search(raw)
-        if match:
-            return UsdQuery(
-                QUERY_PRIM_TYPE,
-                {"path": match.group(1)},
-                source=source)
+    if normalized.startswith("what type is ") and path:
+        return UsdQuery(
+            QUERY_PRIM_TYPE,
+            {"path": path},
+            source=source)
 
     return None
 
@@ -115,6 +181,110 @@ def _identifier(value):
     if value is None:
         return None
     return getattr(value, "identifier", None) or str(value)
+
+
+def _bounded(value, maxChars=_MAX_VALUE_CHARS):
+    try:
+        text = repr(value)
+    except Exception:
+        text = "<unrepresentable>"
+    if len(text) > maxChars:
+        return text[:maxChars] + "...<truncated>"
+    return text
+
+
+def _current_prim(usdviewApi):
+    try:
+        prim = usdviewApi.prim
+        if prim and prim.IsValid():
+            return prim
+    except Exception:
+        pass
+    return None
+
+
+def _prim_for_query(usdviewApi, query):
+    path = str(query.args.get("path") or "")
+    if path:
+        try:
+            prim = usdviewApi.stage.GetPrimAtPath(path)
+        except Exception:
+            prim = None
+        if prim and prim.IsValid():
+            return prim
+        return None
+    return _current_prim(usdviewApi)
+
+
+def _prim_path(prim):
+    try:
+        return str(prim.GetPath())
+    except Exception:
+        return "<unknown>"
+
+
+def _selected_property(usdviewApi):
+    try:
+        prop = usdviewApi.property
+        if prop:
+            return prop
+    except Exception:
+        pass
+    return None
+
+
+def _property_description(prop):
+    if prop is None:
+        return None
+
+    try:
+        path = str(prop.GetPath())
+    except Exception:
+        path = None
+
+    try:
+        name = str(prop.GetName())
+    except Exception:
+        name = None
+
+    try:
+        typeName = str(prop.GetTypeName())
+    except Exception:
+        typeName = None
+
+    kind = (
+        "relationship"
+        if hasattr(prop, "GetTargets")
+        else "attribute"
+        if hasattr(prop, "Get")
+        else "property")
+
+    return {
+        "path": path,
+        "name": name,
+        "type": typeName,
+        "kind": kind,
+    }
+
+
+def _spec_rows(specs):
+    rows = []
+    for spec in list(specs)[:_MAX_ITEMS]:
+        layer = getattr(spec, "layer", None)
+        try:
+            path = str(spec.path)
+        except Exception:
+            path = None
+        try:
+            specifier = str(spec.specifier)
+        except Exception:
+            specifier = None
+        rows.append({
+            "layer": _identifier(layer),
+            "path": path,
+            "specifier": specifier,
+        })
+    return rows
 
 
 def execute_query(usdviewApi, query):
@@ -185,26 +355,172 @@ def execute_query(usdviewApi, query):
             if identifier is not None else
             "No composition layer/spec is selected")
 
-    if query.kind == QUERY_PRIM_TYPE:
-        path = str(query.args.get("path", ""))
-        try:
-            prim = usdviewApi.stage.GetPrimAtPath(path)
-        except Exception:
-            prim = None
+    if query.kind == QUERY_SELECTED_PROPERTY:
+        prop = _selected_property(usdviewApi)
+        value = _property_description(prop)
+        return QueryResult(
+            value is not None,
+            value,
+            json.dumps(value, indent=2, sort_keys=True)
+            if value is not None else
+            "No property is selected")
 
-        if not prim or not prim.IsValid():
+    if query.kind == QUERY_PROPERTY_VALUE:
+        prop = _selected_property(usdviewApi)
+        if prop is None:
+            return QueryResult(False, None, "No property is selected")
+
+        description = _property_description(prop) or {}
+        if hasattr(prop, "GetTargets"):
+            try:
+                value = [str(path) for path in prop.GetTargets()][:_MAX_ITEMS]
+            except Exception as exc:
+                return QueryResult(
+                    False, None,
+                    "Could not read relationship targets: {}".format(exc))
+        elif hasattr(prop, "Get"):
+            try:
+                value = prop.Get(getattr(usdviewApi, "frame", None))
+            except Exception:
+                try:
+                    value = prop.Get()
+                except Exception as exc:
+                    return QueryResult(
+                        False, None,
+                        "Could not read property value: {}".format(exc))
+        else:
             return QueryResult(
-                False,
-                None,
-                "Prim not found: {}".format(path))
+                False, None,
+                "Selected property has no readable value")
 
-        typeName = prim.GetTypeName() or "untyped"
+        rendered = _bounded(value)
+        result = {
+            "property": description,
+            "value": rendered,
+        }
         return QueryResult(
             True,
-            {
+            result,
+            "{} = {}".format(
+                description.get("path") or "property",
+                rendered))
+
+    if query.kind == QUERY_PROPERTY_STACK:
+        prop = _selected_property(usdviewApi)
+        if prop is None or not hasattr(prop, "GetPropertyStack"):
+            return QueryResult(
+                False, None,
+                "No stack-capable property is selected")
+
+        try:
+            stack = prop.GetPropertyStack(
+                getattr(usdviewApi, "frame", None))
+        except Exception:
+            try:
+                stack = prop.GetPropertyStack()
+            except Exception as exc:
+                return QueryResult(
+                    False, None,
+                    "Could not inspect property stack: {}".format(exc))
+
+        rows = _spec_rows(stack)
+        result = {
+            "property": _property_description(prop),
+            "opinions": rows,
+            "truncated": len(stack) > _MAX_ITEMS,
+        }
+        return QueryResult(
+            True,
+            result,
+            json.dumps(result, indent=2, sort_keys=True))
+
+    if query.kind in {
+            QUERY_PRIM_TYPE,
+            QUERY_PRIM_PROPERTIES,
+            QUERY_COMPOSITION,
+            QUERY_VARIANTS}:
+        prim = _prim_for_query(usdviewApi, query)
+        if prim is None:
+            requested = query.args.get("path") or "current selection"
+            return QueryResult(
+                False, None,
+                "Prim not found: {}".format(requested))
+
+        path = _prim_path(prim)
+
+        if query.kind == QUERY_PRIM_TYPE:
+            typeName = prim.GetTypeName() or "untyped"
+            return QueryResult(
+                True,
+                {
+                    "path": path,
+                    "type": typeName,
+                },
+                "{} is {}".format(path, typeName))
+
+        if query.kind == QUERY_PRIM_PROPERTIES:
+            try:
+                properties = list(prim.GetProperties())
+            except Exception as exc:
+                return QueryResult(
+                    False, None,
+                    "Could not list properties: {}".format(exc))
+
+            rows = []
+            for prop in properties[:_MAX_ITEMS]:
+                rows.append(_property_description(prop))
+            result = {
                 "path": path,
-                "type": typeName,
-            },
-            "{} is {}".format(path, typeName))
+                "properties": rows,
+                "truncated": len(properties) > _MAX_ITEMS,
+            }
+            return QueryResult(
+                True,
+                result,
+                json.dumps(result, indent=2, sort_keys=True))
+
+        if query.kind == QUERY_COMPOSITION:
+            try:
+                stack = list(prim.GetPrimStack())
+            except Exception as exc:
+                return QueryResult(
+                    False, None,
+                    "Could not inspect composition: {}".format(exc))
+            result = {
+                "path": path,
+                "prim_stack": _spec_rows(stack),
+                "truncated": len(stack) > _MAX_ITEMS,
+            }
+            return QueryResult(
+                True,
+                result,
+                json.dumps(result, indent=2, sort_keys=True))
+
+        if query.kind == QUERY_VARIANTS:
+            try:
+                variantSets = prim.GetVariantSets()
+                names = list(variantSets.GetNames())
+                rows = []
+                for name in names[:_MAX_ITEMS]:
+                    variantSet = prim.GetVariantSet(name)
+                    rows.append({
+                        "name": str(name),
+                        "selection": str(
+                            variantSet.GetVariantSelection() or ""),
+                    })
+            except Exception as exc:
+                return QueryResult(
+                    False, None,
+                    "Could not inspect variants: {}".format(exc))
+
+            result = {
+                "path": path,
+                "variants": rows,
+                "truncated": len(names) > _MAX_ITEMS,
+            }
+            return QueryResult(
+                True,
+                result,
+                json.dumps(result, indent=2, sort_keys=True))
 
     raise AssertionError("Unhandled supported query: {}".format(query.kind))
