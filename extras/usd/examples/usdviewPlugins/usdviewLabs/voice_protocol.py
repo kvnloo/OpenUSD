@@ -15,6 +15,19 @@ import json
 
 MAX_MESSAGE_BYTES = 16384
 MAX_TRANSCRIPT_CHARS = 4096
+MAX_GENERATION = (1 << 63) - 1
+OPS = frozenset({"start", "partial", "final", "cancel"})
+
+
+def _parse_generation(payload):
+    generation = payload.get("generation", 0)
+    try:
+        generation = int(generation)
+    except (TypeError, ValueError):
+        raise ValueError("generation must be an integer")
+    if generation < 0 or generation > MAX_GENERATION:
+        raise ValueError("generation out of range")
+    return generation
 
 
 def decode_message(raw, expectedToken):
@@ -35,8 +48,17 @@ def decode_message(raw, expectedToken):
     if not hmac.compare_digest(token, str(expectedToken)):
         raise ValueError("invalid token")
 
+    # Protocol-1 compatibility: messages without op map final=true to "final"
+    # and final=false to "partial".
+    op = payload.get("op")
+    if op is None:
+        op = "final" if bool(payload.get("final", True)) else "partial"
+    op = str(op).lower()
+    if op not in OPS:
+        raise ValueError("invalid voice op")
+
     transcript = str(payload.get("transcript", "")).strip()
-    if not transcript:
+    if op in {"partial", "final"} and not transcript:
         raise ValueError("empty transcript")
     if len(transcript) > MAX_TRANSCRIPT_CHARS:
         raise ValueError("transcript too long")
@@ -45,10 +67,20 @@ def decode_message(raw, expectedToken):
     if utteranceId is not None:
         utteranceId = str(utteranceId)[:128]
 
+    clientSentUnix = payload.get("client_sent_unix")
+    if clientSentUnix is not None:
+        try:
+            clientSentUnix = float(clientSentUnix)
+        except (TypeError, ValueError):
+            raise ValueError("client_sent_unix must be numeric")
+
     return {
+        "op": op,
+        "generation": _parse_generation(payload),
         "transcript": transcript,
-        "final": bool(payload.get("final", True)),
+        "final": op == "final",
         "utterance_id": utteranceId,
+        "client_sent_unix": clientSentUnix,
     }
 
 
