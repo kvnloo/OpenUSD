@@ -150,6 +150,29 @@ class QueriesTest(unittest.TestCase):
             execute_query(self.api, query).value,
             24.0)
 
+    def test_frame_query_accepts_usd_timecode(self):
+        class _TimeCode(object):
+            def __init__(self, value, default=False):
+                self._value = value
+                self._default = default
+
+            def IsDefault(self):
+                return self._default
+
+            def GetValue(self):
+                return self._value
+
+        query = route_query_text("what frame am i on")
+        setattr(self.api, "frame", _TimeCode(12.0))
+        result = execute_query(self.api, query)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.value, 12.0)
+
+        setattr(self.api, "frame", _TimeCode(float("nan"), default=True))
+        result = execute_query(self.api, query)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.value, "default")
+
     def test_prim_type_query(self):
         query = route_query_text(
             "what type is /World/Car")

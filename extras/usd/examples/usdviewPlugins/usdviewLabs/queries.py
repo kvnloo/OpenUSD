@@ -287,6 +287,25 @@ def _spec_rows(specs):
     return rows
 
 
+def _frame_value(frame):
+    """Return a displayable frame from a float or Usd.TimeCode.
+
+    usdviewApi.frame is a Usd.TimeCode in current OpenUSD. float() rejects
+    that type, and TimeCode.Default().GetValue() is NaN, so default time has
+    to be reported explicitly.
+    """
+    if frame is None:
+        return None
+    if hasattr(frame, "IsDefault") and frame.IsDefault():
+        return "default"
+    if hasattr(frame, "GetValue"):
+        frame = frame.GetValue()
+    value = float(frame)
+    if value != value:
+        return None
+    return value
+
+
 def execute_query(usdviewApi, query):
     if not isinstance(query, UsdQuery):
         raise TypeError("execute_query expects UsdQuery")
@@ -304,7 +323,7 @@ def execute_query(usdviewApi, query):
 
     if query.kind == QUERY_FRAME:
         try:
-            frame = float(usdviewApi.frame)
+            frame = _frame_value(usdviewApi.frame)
         except Exception:
             frame = None
         return QueryResult(
