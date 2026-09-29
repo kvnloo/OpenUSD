@@ -1,0 +1,16 @@
+{
+    "Plugins": [
+        {
+            "Type": "python",
+            "Name": "usdviewLabs",
+            "Info": {
+                "Types": {
+                    "usdviewLabs.UsdviewLabsContainer": {
+                        "bases": ["pxr.Usdviewq.plugin.PluginContainer"],
+                        "displayName": "Usdview Labs"
+                    }
+                }
+            }
+        }
+    ]
+}
