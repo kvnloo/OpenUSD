@@ -5,7 +5,7 @@
 # https://openusd.org/license.
 #
 
-"""Ctrl+K command palette experiment for usdview."""
+"""Ctrl+K command + read-only query palette experiment for usdview."""
 
 from __future__ import print_function
 
@@ -21,8 +21,10 @@ from .actions import (
 )
 from .fuzzy import ranked, score
 from .intents import route_text
+from .preview import QueryResultDialog
+from .queries import execute_query, route_query_text
 from .receipts import execute_with_receipt, record_event
-from .router import RouteDecision
+from .router import RouteDecision, text_fingerprint
 from .shadow import schedule_shadow
 
 
@@ -33,13 +35,20 @@ _PRIM_DEBOUNCE_MS = 75
 
 
 class _Entry(object):
-    __slots__ = ("label", "detail", "action", "decision")
+    __slots__ = ("label", "detail", "action", "decision", "query")
 
-    def __init__(self, label, detail, action, decision=None):
+    def __init__(
+            self,
+            label,
+            detail,
+            action=None,
+            decision=None,
+            query=None):
         self.label = label
         self.detail = detail
         self.action = action
         self.decision = decision
+        self.query = query
 
     @property
     def search_text(self):
@@ -54,17 +63,18 @@ class CommandPalette(QtWidgets.QDialog):
         self._pendingQuery = ""
         self._sessionMetrics = []
         self._pendingOpenMetric = None
+        self._answerDialog = None
 
         self.setWindowTitle("Usdview Labs")
         self.setModal(False)
-        self.resize(680, 420)
+        self.resize(700, 430)
 
         self._query = QtWidgets.QLineEdit(self)
         self._query.setPlaceholderText(
-            "Search commands, intents, or prim paths")
+            "Search commands, prims, or ask a read-only scene question")
         self._results = QtWidgets.QListWidget(self)
         self._hint = QtWidgets.QLabel(
-            "Enter: run/select    Esc: close    Jev: shadow-only",
+            "Enter: run/answer    Esc: close    Questions never mutate USD",
             self)
 
         self._primTimer = QtCore.QTimer(self)
@@ -127,18 +137,20 @@ class CommandPalette(QtWidgets.QDialog):
             _Entry(
                 "Clear selection",
                 "selection",
-                UsdAction(ACTION_CLEAR_SELECTION, source="palette")),
+                action=UsdAction(
+                    ACTION_CLEAR_SELECTION,
+                    source="palette")),
             _Entry(
                 "Enable viewer mode",
                 "viewport viewer fullscreen",
-                UsdAction(
+                action=UsdAction(
                     ACTION_SET_VIEWER_MODE,
                     {"enabled": True},
                     source="palette")),
             _Entry(
                 "Disable viewer mode",
                 "viewport panels restore",
-                UsdAction(
+                action=UsdAction(
                     ACTION_SET_VIEWER_MODE,
                     {"enabled": False},
                     source="palette")),
@@ -159,7 +171,7 @@ class CommandPalette(QtWidgets.QDialog):
                 entries.append(_Entry(
                     path,
                     prim.GetTypeName() or "Prim",
-                    UsdAction(
+                    action=UsdAction(
                         ACTION_SELECT_PATH,
                         {"path": path},
                         source="palette")))
@@ -200,28 +212,39 @@ class CommandPalette(QtWidgets.QDialog):
             key=lambda entry: entry.search_text,
             limit=_MAX_RESULTS)
 
+        query = route_query_text(
+            text,
+            source="palette-query")
+        if query is not None:
+            entries.insert(0, _Entry(
+                "Ask: {}".format(query.kind),
+                "read-only scene query",
+                query=query))
+
         decision = route_text(text, source="palette-intent")
         if decision.action is not None:
             entries.insert(0, _Entry(
                 "Intent: {}".format(decision.action.kind),
                 decision.reason,
-                decision.action,
-                decision))
+                action=decision.action,
+                decision=decision))
 
         if includePrims and text.strip():
             primEntries, primsScanned = self._scan_matching_prims(text)
             entries.extend(primEntries)
 
-            intentEntries = [
-                entry for entry in entries if entry.decision is not None]
-            normalEntries = [
-                entry for entry in entries if entry.decision is None]
-            normalEntries = ranked(
+            priority = [
+                entry for entry in entries
+                if entry.decision is not None or entry.query is not None]
+            normal = [
+                entry for entry in entries
+                if entry.decision is None and entry.query is None]
+            normal = ranked(
                 text,
-                normalEntries,
+                normal,
                 key=lambda entry: entry.search_text,
-                limit=_MAX_RESULTS - len(intentEntries))
-            entries = intentEntries + normalEntries
+                limit=max(0, _MAX_RESULTS - len(priority)))
+            entries = priority + normal
 
         self._results.clear()
 
@@ -249,12 +272,51 @@ class CommandPalette(QtWidgets.QDialog):
             return
 
         entry = item.data(QtCore.Qt.UserRole)
+
+        if entry.query is not None:
+            started = time.perf_counter()
+            result = execute_query(
+                self._api,
+                entry.query)
+
+            record_event(self._api, "palette_query", {
+                "text_hash": text_fingerprint(self._pendingQuery),
+                "text_len": len(self._pendingQuery),
+                "query": entry.query.to_dict(),
+                "ok": bool(result.ok),
+                "duration_ms": round(
+                    (time.perf_counter() - started) * 1000.0, 3),
+            })
+
+            dialog = QueryResultDialog(
+                self._api,
+                self._pendingQuery,
+                entry.query,
+                result)
+            dialog.setWindowTitle("Scene answer")
+            self._answerDialog = dialog
+            dialog.finished.connect(
+                lambda _code: setattr(
+                    self,
+                    "_answerDialog",
+                    None))
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            self.close()
+            return
+
+        if entry.action is None:
+            return
+
         deterministic = entry.decision or RouteDecision(
             entry.action,
             "palette selection",
             "palette")
 
-        result = execute_with_receipt(self._api, entry.action)
+        result = execute_with_receipt(
+            self._api,
+            entry.action)
 
         if self._pendingQuery.strip():
             schedule_shadow(
