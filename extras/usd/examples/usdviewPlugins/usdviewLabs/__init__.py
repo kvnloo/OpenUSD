@@ -5,11 +5,7 @@
 # https://openusd.org/license.
 #
 
-"""Fork-local usdview UX experiments.
-
-The package is intentionally isolated from usdview core so experiments can be
-measured before any individual UX primitive is proposed upstream.
-"""
+"""Fork-local usdview UX experiments."""
 
 from pxr import Tf
 from pxr.Usdviewq.plugin import PluginContainer
@@ -18,14 +14,27 @@ from pxr.Usdviewq.plugin import PluginContainer
 class UsdviewLabsContainer(PluginContainer):
     def registerPlugins(self, plugRegistry, usdviewApi):
         palette = self.deferredImport(".palette")
+        hud = self.deferredImport(".hud")
         voiceBridge = self.deferredImport(".voice_bridge")
         pttHotkey = self.deferredImport(".ptt_hotkey")
 
         self._showPalette = plugRegistry.registerCommandPlugin(
             "UsdviewLabs.showPalette",
-            "Command Palette",
+            "Command + Query Palette",
             palette.showPalette,
-            "Open the experimental usdview command palette")
+            "Open the experimental command and read-only query palette")
+
+        self._showHud = plugRegistry.registerCommandPlugin(
+            "UsdviewLabs.showContextHud",
+            "Show Context HUD",
+            hud.showContextHud,
+            "Show lightweight current usdview context")
+
+        self._hideHud = plugRegistry.registerCommandPlugin(
+            "UsdviewLabs.hideContextHud",
+            "Hide Context HUD",
+            hud.hideContextHud,
+            "Hide the experimental context HUD")
 
         self._startVoiceBridge = plugRegistry.registerCommandPlugin(
             "UsdviewLabs.startVoiceBridge",
@@ -54,6 +63,8 @@ class UsdviewLabsContainer(PluginContainer):
     def configureView(self, plugRegistry, plugUIBuilder):
         menu = plugUIBuilder.findOrCreateMenu("Labs")
         menu.addItem(self._showPalette, shortcut="Ctrl+K")
+        menu.addItem(self._showHud, shortcut="Ctrl+Shift+H")
+        menu.addItem(self._hideHud)
         menu.addSeparator()
         menu.addItem(self._startVoiceBridge)
         menu.addItem(self._stopVoiceBridge)

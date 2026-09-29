@@ -216,3 +216,33 @@ Do not promote or activate a candidate if it:
 
 Provider-specific integrations stay downstream. Only generic UX primitives with
 measured wins should be considered for upstream OpenUSD.
+
+## P5 — query palette + context HUD
+
+P5 makes the generic/non-model parts useful without voice:
+
+- `Ctrl+K` now accepts both actions and deterministic read-only `UsdQuery`
+  questions;
+- query entries are visually labeled as read-only and never pass through the
+  action executor;
+- query latency is recorded without storing raw query text;
+- `Ctrl+Shift+H` opens an opt-in context HUD.
+
+The HUD reads only a bounded snapshot every 250 ms and updates the widget only
+when that snapshot changes. It shows:
+
+- stage identifier;
+- frame;
+- renderer;
+- viewer mode;
+- viewport size;
+- bounded selection;
+- focus prim/property;
+- selected composition layer/spec layer;
+- validation-error count.
+
+The HUD does not traverse the stage, call a model, perform networking, or mutate
+USD.
+
+This is intentionally the first slice to evaluate for upstreamability because
+it remains useful if every voice/Jev experiment is removed.
