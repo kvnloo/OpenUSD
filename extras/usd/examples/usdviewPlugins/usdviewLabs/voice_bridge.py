@@ -5,12 +5,7 @@
 # https://openusd.org/license.
 #
 
-"""Local-only transcript bridge for usdview Labs.
-
-The socket thread can only validate and enqueue transcript text. All usdview
-access remains on the Qt main thread, and every proposed action requires an
-explicit preview/accept step before execution.
-"""
+"""Interruption-safe local transcript bridge for usdview Labs."""
 
 from __future__ import print_function
 
@@ -24,9 +19,12 @@ import time
 
 from pxr.Usdviewq.qt import QtCore
 
-from .preview import ActionPreviewDialog
+from .preview import ActionPreviewDialog, QueryResultDialog
+from .queries import execute_query, route_query_text
 from .receipts import record_event
+from .router import text_fingerprint
 from .voice import ingest_transcript
+from .voice_lifecycle import GenerationGate
 from .voice_protocol import (
     MAX_MESSAGE_BYTES,
     decode_message,
@@ -40,7 +38,7 @@ _POLL_MS = 30
 
 
 class _VoiceServer(threading.Thread):
-    def __init__(self, port, token, outputQueue):
+    def __init__(self, port, token, outputQueue, gate):
         super(_VoiceServer, self).__init__(
             name="usdview-labs-voice-server")
         self.daemon = True
@@ -48,6 +46,7 @@ class _VoiceServer(threading.Thread):
         self.port = int(port)
         self.token = str(token)
         self.outputQueue = outputQueue
+        self.gate = gate
 
         self.ready = threading.Event()
         self.stopEvent = threading.Event()
@@ -61,7 +60,6 @@ class _VoiceServer(threading.Thread):
         except queue.Full:
             pass
 
-        # Prefer current intent over stale backlog.
         try:
             self.outputQueue.get_nowait()
         except queue.Empty:
@@ -116,15 +114,29 @@ class _VoiceServer(threading.Thread):
                         message = decode_message(
                             raw,
                             self.token)
+                        message["_received_perf"] = time.perf_counter()
+                        message["_received_unix"] = time.time()
+
+                        accepted = self.gate.observe(message)
+                        if not accepted:
+                            conn.sendall(encode_response(
+                                True,
+                                queued=False,
+                                stale=True,
+                                latest_generation=self.gate.latest()))
+                            continue
 
                         queued = False
-                        if message["final"]:
+                        if message["op"] in {
+                                "start", "final", "cancel"}:
                             self._offer_latest(message)
                             queued = True
 
                         conn.sendall(encode_response(
                             True,
-                            queued=queued))
+                            queued=queued,
+                            stale=False,
+                            latest_generation=self.gate.latest()))
 
                     except Exception as exc:
                         try:
@@ -157,10 +169,11 @@ class VoiceBridgeController(QtCore.QObject):
         self._api = usdviewApi
         self._queue = queue.Queue(maxsize=_QUEUE_SIZE)
         self._server = None
+        self._gate = None
         self._token = None
         self._endpointPath = None
         self._preview = None
-        self._pendingLatest = None
+        self._previewGeneration = None
 
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(_POLL_MS)
@@ -208,7 +221,7 @@ class VoiceBridgeController(QtCore.QObject):
         tempPath = path + ".tmp"
 
         payload = {
-            "protocol": 1,
+            "protocol": 2,
             "host": _HOST,
             "port": self._server.boundPort,
             "token": self._token,
@@ -248,6 +261,7 @@ class VoiceBridgeController(QtCore.QObject):
             return True
 
         self._token = secrets.token_urlsafe(24)
+        self._gate = GenerationGate()
 
         try:
             port = self._requested_port()
@@ -259,7 +273,8 @@ class VoiceBridgeController(QtCore.QObject):
         server = _VoiceServer(
             port,
             self._token,
-            self._queue)
+            self._queue,
+            self._gate)
         self._server = server
         server.start()
 
@@ -290,7 +305,7 @@ class VoiceBridgeController(QtCore.QObject):
         record_event(self._api, "voice_bridge_start", {
             "host": _HOST,
             "port": server.boundPort,
-            "protocol": 1,
+            "protocol": 2,
         })
 
         self._safe_status(
@@ -301,6 +316,9 @@ class VoiceBridgeController(QtCore.QObject):
 
     def stop(self, *_args):
         self._timer.stop()
+
+        self._cancel_preview(
+            "voice bridge stopped")
 
         oldServer = self._server
         self._server = None
@@ -315,7 +333,7 @@ class VoiceBridgeController(QtCore.QObject):
             self._endpointPath = None
 
         self._token = None
-        self._pendingLatest = None
+        self._gate = None
 
         try:
             record_event(
@@ -342,45 +360,136 @@ class VoiceBridgeController(QtCore.QObject):
             except queue.Empty:
                 break
 
-        if latest is None:
+        if latest is not None:
+            self._handle(latest)
+
+    def _handle(self, message):
+        op = message["op"]
+        generation = int(message["generation"])
+
+        if op == "start":
+            self._cancel_preview(
+                "superseded by generation {}".format(generation))
+            record_event(self._api, "voice_generation_start", {
+                "generation": generation,
+            })
+            return
+
+        if op == "cancel":
+            self._cancel_preview(
+                "generation {} cancelled".format(generation))
+            record_event(self._api, "voice_generation_cancel", {
+                "generation": generation,
+            })
+            return
+
+        if op != "final":
             return
 
         if (
-                self._preview is not None and
-                self._preview.isVisible()):
-            self._pendingLatest = latest
+                self._gate is None or
+                not self._gate.can_execute(generation)):
+            record_event(self._api, "voice_final_dropped", {
+                "generation": generation,
+                "reason": "stale-or-cancelled",
+            })
             return
 
-        self._show(latest)
+        self._cancel_preview(
+            "superseded by newer final")
 
-    def _show(self, message):
         transcript = message["transcript"]
+        query = route_query_text(
+            transcript,
+            source="voice-query")
+
+        if query is not None:
+            result = execute_query(
+                self._api,
+                query)
+            record_event(self._api, "voice_query", {
+                "generation": generation,
+                "text_hash": text_fingerprint(transcript),
+                "text_len": len(transcript),
+                "query": query.to_dict(),
+                "ok": bool(result.ok),
+            })
+            self._show_query(
+                message,
+                query,
+                result)
+            return
+
         decision = ingest_transcript(
             self._api,
             transcript,
             shadow=True)
+        self._show_action(
+            message,
+            decision)
+
+    def _show_action(self, message, decision):
+        generation = int(message["generation"])
 
         dialog = ActionPreviewDialog(
             self._api,
-            transcript,
-            decision)
+            message["transcript"],
+            decision,
+            generation=generation,
+            acceptGuard=lambda g=generation: (
+                self._gate is not None and
+                self._gate.can_execute(g)),
+            receivedPerf=message.get("_received_perf"),
+            clientSentUnix=message.get("client_sent_unix"))
+
+        self._attach_preview(
+            dialog,
+            generation)
+
+    def _show_query(self, message, query, result):
+        generation = int(message["generation"])
+
+        dialog = QueryResultDialog(
+            self._api,
+            message["transcript"],
+            query,
+            result,
+            generation=generation,
+            receivedPerf=message.get("_received_perf"),
+            clientSentUnix=message.get("client_sent_unix"))
+
+        self._attach_preview(
+            dialog,
+            generation)
+
+    def _attach_preview(self, dialog, generation):
         self._preview = dialog
+        self._previewGeneration = int(generation)
 
         dialog.finished.connect(
-            self._preview_finished)
+            lambda _code, d=dialog: self._preview_finished(d))
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
 
-    def _preview_finished(self, *_args):
-        self._preview = None
+    def _preview_finished(self, dialog):
+        if self._preview is dialog:
+            self._preview = None
+            self._previewGeneration = None
 
-        if self._pendingLatest is not None:
-            pending = self._pendingLatest
-            self._pendingLatest = None
-            QtCore.QTimer.singleShot(
-                0,
-                lambda: self._show(pending))
+    def _cancel_preview(self, reason):
+        dialog = self._preview
+        self._preview = None
+        self._previewGeneration = None
+
+        if dialog is not None:
+            try:
+                dialog.cancelFromBridge(reason)
+            except Exception:
+                try:
+                    dialog.reject()
+                except Exception:
+                    pass
 
 
 _controller = None

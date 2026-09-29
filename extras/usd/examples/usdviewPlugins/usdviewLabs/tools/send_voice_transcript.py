@@ -6,14 +6,18 @@
 # https://openusd.org/license.
 #
 
-"""Send one final transcript to a running usdview Labs voice bridge."""
+"""Send voice lifecycle events to a running usdview Labs bridge."""
 
 import argparse
 import json
 import os
 import socket
 import sys
+import time
 import uuid
+
+
+MAX_GENERATION = (1 << 63) - 1
 
 
 def _endpoint_path(configDir):
@@ -23,15 +27,27 @@ def _endpoint_path(configDir):
         "voice-endpoint.json")
 
 
-def send(configDir, transcript, timeout=1.0):
+def new_generation():
+    return time.time_ns() & MAX_GENERATION
+
+
+def send_event(
+        configDir,
+        op,
+        generation,
+        transcript="",
+        utteranceId=None,
+        timeout=1.0):
     with open(_endpoint_path(configDir), "r") as stream:
         endpoint = json.load(stream)
 
     payload = {
         "token": endpoint["token"],
-        "transcript": transcript,
-        "final": True,
-        "utterance_id": str(uuid.uuid4()),
+        "op": str(op),
+        "generation": int(generation),
+        "transcript": str(transcript),
+        "utterance_id": utteranceId or str(uuid.uuid4()),
+        "client_sent_unix": time.time(),
     }
 
     raw = (
@@ -47,20 +63,50 @@ def send(configDir, transcript, timeout=1.0):
     return json.loads(response.decode("utf-8"))
 
 
+def send(configDir, transcript, timeout=1.0):
+    """Backward-compatible helper: one generated final utterance."""
+    return send_event(
+        configDir,
+        "final",
+        new_generation(),
+        transcript=transcript,
+        timeout=timeout)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "transcript",
-        help="Final transcript text to preview in usdview")
+        nargs="?",
+        default="",
+        help="Transcript text; required for partial/final")
+    parser.add_argument(
+        "--op",
+        choices=("start", "partial", "final", "cancel"),
+        default="final")
+    parser.add_argument(
+        "--generation",
+        type=int,
+        default=None,
+        help="Monotonic utterance generation; generated if omitted")
     parser.add_argument(
         "--config-dir",
         default="~/.usdview",
         help="usdview config directory; default: ~/.usdview")
     args = parser.parse_args()
 
-    result = send(
+    generation = (
+        args.generation
+        if args.generation is not None
+        else new_generation())
+
+    result = send_event(
         args.config_dir,
-        args.transcript)
+        args.op,
+        generation,
+        transcript=args.transcript)
+
+    result["generation"] = generation
     print(json.dumps(result, sort_keys=True))
     return 0 if result.get("ok") else 1
 
