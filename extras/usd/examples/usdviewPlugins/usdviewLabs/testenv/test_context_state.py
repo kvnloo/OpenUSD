@@ -29,6 +29,11 @@ class _Spec(object):
     layer = _Layer()
 
 
+class _TimeCode(object):
+    def GetValue(self):
+        return 12.5
+
+
 class _Api(object):
     selectedPaths = ["/World/Car", "/World/Light"]
     prim = _PathObj("/World/Car")
@@ -37,7 +42,7 @@ class _Api(object):
     spec = _Spec()
     viewportSize = (1280, 720)
     validationErrors = [1, 2]
-    frame = 24
+    frame = _TimeCode()
     stageIdentifier = "/tmp/root.usda"
     viewerMode = False
 
@@ -59,6 +64,9 @@ class ContextStateTest(unittest.TestCase):
         self.assertEqual(
             state["validation_error_count"],
             2)
+        self.assertEqual(
+            state["frame"],
+            12.5)
 
     def test_format_contains_core_context(self):
         text = format_hud_state(

@@ -183,6 +183,21 @@ def _identifier(value):
     return getattr(value, "identifier", None) or str(value)
 
 
+def _frame_value(usdviewApi):
+    """Return the current frame as a float across numeric/Usd.TimeCode APIs."""
+    try:
+        frame = usdviewApi.frame
+    except Exception:
+        return None
+
+    try:
+        if hasattr(frame, "GetValue"):
+            frame = frame.GetValue()
+        return float(frame)
+    except Exception:
+        return None
+
+
 def _bounded(value, maxChars=_MAX_VALUE_CHARS):
     try:
         text = repr(value)
@@ -303,10 +318,7 @@ def execute_query(usdviewApi, query):
                 ", ".join(paths) if paths else "nothing"))
 
     if query.kind == QUERY_FRAME:
-        try:
-            frame = float(usdviewApi.frame)
-        except Exception:
-            frame = None
+        frame = _frame_value(usdviewApi)
         return QueryResult(
             frame is not None,
             frame,
