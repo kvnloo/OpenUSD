@@ -19,7 +19,7 @@ def _result(value):
     return "unknown"
 
 
-def normalize(report, revision, ci_jobs=None):
+def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
     if not _SHA.match(revision):
         raise ValueError("revision must be a full 40-character Git SHA")
 
@@ -56,6 +56,16 @@ def normalize(report, revision, ci_jobs=None):
         "details": {"sessions": sessions},
     })
 
+    workflow_result = None
+    if workflow_conclusion is not None:
+        workflow_result = _result(workflow_conclusion)
+        evidence.append({
+            "id": "buildusd-workflow",
+            "kind": "ci-workflow",
+            "result": workflow_result,
+            "details": {"name": "BuildUSD", "conclusion": workflow_conclusion},
+        })
+
     for index, job in enumerate(ci_jobs or []):
         if not isinstance(job, dict):
             continue
@@ -64,16 +74,34 @@ def normalize(report, revision, ci_jobs=None):
             "id": f"buildusd-{index}",
             "kind": "ci-job",
             "result": _result(job.get("conclusion")),
-            "details": {"name": name, "conclusion": job.get("conclusion")},
+            "details": {
+                "name": name,
+                "conclusion": job.get("conclusion"),
+                "required": bool(job.get("required", True)),
+            },
         })
 
-    results = [item["result"] for item in evidence]
-    if "fail" in results:
+    if any(item["result"] == "fail" for item in evidence):
         outcome = "fail"
-    elif evidence and all(result == "pass" for result in results):
+    elif workflow_result == "pass" and safety_result == "pass" and session_result == "pass":
+        # GitHub may mark optional matrix jobs skipped while the workflow itself
+        # concludes success. Preserve those job-level unknowns without
+        # downgrading the verified workflow outcome.
         outcome = "pass"
+    elif workflow_result == "fail":
+        outcome = "fail"
     else:
-        outcome = "unknown"
+        required_results = [
+            item["result"]
+            for item in evidence
+            if item["kind"] != "ci-job"
+            or item.get("details", {}).get("required", True)
+        ]
+        outcome = (
+            "pass"
+            if required_results and all(result == "pass" for result in required_results)
+            else "unknown"
+        )
 
     return {
         "schema": _SCHEMA,
@@ -94,6 +122,7 @@ def main():
     parser.add_argument("--report", required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--ci-jobs")
+    parser.add_argument("--workflow-conclusion")
     args = parser.parse_args()
 
     with open(args.report, "r", encoding="utf-8") as stream:
@@ -105,7 +134,17 @@ def main():
         if not isinstance(jobs, list):
             raise SystemExit("--ci-jobs must contain a JSON array")
 
-    json.dump(normalize(report, args.revision, jobs), sys.stdout, indent=2, sort_keys=True)
+    json.dump(
+        normalize(
+            report,
+            args.revision,
+            jobs,
+            workflow_conclusion=args.workflow_conclusion,
+        ),
+        sys.stdout,
+        indent=2,
+        sort_keys=True,
+    )
     sys.stdout.write("\n")
     return 0
 
