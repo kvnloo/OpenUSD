@@ -40,14 +40,29 @@ class PortableEvidenceTest(unittest.TestCase):
                 {"name": "Linux", "conclusion": "success"},
                 {"name": "Windows", "conclusion": "success"},
             ],
+            workflow_conclusion="success",
         )
         self.assertEqual(receipt["outcome"], "pass")
 
-    def test_failed_job_is_fail(self):
+    def test_successful_workflow_allows_optional_skipped_job(self):
+        receipt = self.module.normalize(
+            {"sessions": 4, "safety": {"ok": True, "violations": []}},
+            self.sha,
+            [
+                {"name": "Linux", "conclusion": "success"},
+                {"name": "GPUTests", "conclusion": "skipped", "required": False},
+            ],
+            workflow_conclusion="success",
+        )
+        self.assertEqual(receipt["outcome"], "pass")
+        self.assertEqual(receipt["evidence"][-1]["result"], "unknown")
+
+    def test_failed_job_is_fail_even_if_workflow_claims_success(self):
         receipt = self.module.normalize(
             {"sessions": 4, "safety": {"ok": True, "violations": []}},
             self.sha,
             [{"name": "Windows", "conclusion": "failure"}],
+            workflow_conclusion="success",
         )
         self.assertEqual(receipt["outcome"], "fail")
         self.assertEqual(receipt["evidence"][-1]["details"]["name"], "Windows")
@@ -61,6 +76,7 @@ class PortableEvidenceTest(unittest.TestCase):
         receipt = self.module.normalize(
             {"sessions": 1, "safety": {"ok": False, "violations": [{"type": "x"}]}},
             self.sha,
+            workflow_conclusion="success",
         )
         self.assertEqual(receipt["outcome"], "fail")
 
