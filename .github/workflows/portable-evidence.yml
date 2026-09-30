@@ -1,0 +1,48 @@
+name: Portable Evidence
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - exp/portable-evidence-v0
+
+jobs:
+  conformance:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test normalizer
+        run: python extras/usd/examples/usdviewPlugins/usdviewLabs/testenv/test_portable_evidence.py
+      - name: Generate replay receipt
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          cat > /tmp/report.json <<'JSON'
+          {"sessions":4,"safety":{"ok":true,"violations":[]}}
+          JSON
+          cat > /tmp/jobs.json <<'JSON'
+          [
+            {"name":"Linux","conclusion":"success","required":true},
+            {"name":"Windows","conclusion":"success","required":true},
+            {"name":"GPUTests","conclusion":"skipped","required":false}
+          ]
+          JSON
+          python extras/usd/examples/usdviewPlugins/usdviewLabs/experiments/portable_evidence.py             --report /tmp/report.json             --ci-jobs /tmp/jobs.json             --workflow-conclusion success             --revision "$REVISION" > portable-evidence.json
+          python - <<'PY'
+          import json, os
+          with open("portable-evidence.json", encoding="utf-8") as stream:
+              receipt = json.load(stream)
+          assert receipt["producer"]["revision"] == os.environ["REVISION"]
+          assert receipt["outcome"] == "pass"
+          assert any(item["result"] == "unknown" for item in receipt["evidence"])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-evidence-openusd-${{ github.sha }}
+          path: portable-evidence.json
