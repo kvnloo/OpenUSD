@@ -8,7 +8,7 @@ import sys
 
 
 _SCHEMA = "z0.evidence.v0"
-_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
+_SHA = re.compile(r"[0-9a-fA-F]{40}")
 
 
 def _result(value):
@@ -20,25 +20,26 @@ def _result(value):
 
 
 def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
-    if not _SHA.match(revision):
+    if not isinstance(revision, str) or not _SHA.fullmatch(revision):
         raise ValueError("revision must be a full 40-character Git SHA")
 
     evidence = []
     invariants = []
 
     safety = report.get("safety") if isinstance(report, dict) else None
-    if isinstance(safety, dict) and isinstance(safety.get("ok"), bool):
-        safety_result = "pass" if safety["ok"] else "fail"
-    else:
-        safety_result = "unknown"
+    violations = safety.get("violations") if isinstance(safety, dict) else None
+    safety_result = "unknown"
+    if isinstance(safety, dict):
+        if safety.get("ok") is False or (isinstance(violations, list) and violations):
+            safety_result = "fail"
+        elif safety.get("ok") is True and isinstance(violations, list):
+            safety_result = "pass"
     evidence.append({
         "id": "labs-safety",
         "kind": "usdview-labs-safety-audit",
         "result": safety_result,
         "details": {
-            "violations": len(safety.get("violations", []))
-            if isinstance(safety, dict) and isinstance(safety.get("violations"), list)
-            else None,
+            "violations": len(violations) if isinstance(violations, list) else None,
         },
     })
     invariants.append({
@@ -48,7 +49,11 @@ def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
     })
 
     sessions = report.get("sessions") if isinstance(report, dict) else None
-    session_result = "pass" if isinstance(sessions, int) and sessions > 0 else "unknown"
+    session_result = (
+        "pass"
+        if isinstance(sessions, int) and not isinstance(sessions, bool) and sessions > 0
+        else "unknown"
+    )
     evidence.append({
         "id": "ux-sessions",
         "kind": "ux-benchmark",
@@ -77,20 +82,17 @@ def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
             "details": {
                 "name": name,
                 "conclusion": job.get("conclusion"),
-                "required": bool(job.get("required", True)),
+                "required": job.get("required", True) is not False,
             },
         })
 
     if any(item["result"] == "fail" for item in evidence):
         outcome = "fail"
-    elif workflow_result == "pass" and safety_result == "pass" and session_result == "pass":
-        # GitHub may mark optional matrix jobs skipped while the workflow itself
-        # concludes success. Preserve those job-level unknowns without
-        # downgrading the verified workflow outcome.
-        outcome = "pass"
     elif workflow_result == "fail":
         outcome = "fail"
     else:
+        # Optional skipped jobs retain their unknown evidence items. Required
+        # jobs must be complete even when the workflow summary claims success.
         required_results = [
             item["result"]
             for item in evidence
