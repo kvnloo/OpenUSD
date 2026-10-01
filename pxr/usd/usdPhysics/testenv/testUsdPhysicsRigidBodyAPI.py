@@ -115,6 +115,52 @@ class TestUsdPhysicsRigidBodyAPI(unittest.TestCase):
                         
         self.compare_mass_information(rigidBodyAPI, 1000.0, expectedCoM=Gf.Vec3f(0.0), expectedInertia=Gf.Vec3f(166.667))
 
+    def test_rejected_collision_mass_information(self):
+        self.setup_scene()
+
+        body = UsdGeom.Xform.Define(self.stage, "/Body")
+        rigidBodyAPI = UsdPhysics.RigidBodyAPI.Apply(body.GetPrim())
+        UsdPhysics.MassAPI.Apply(body.GetPrim()).GetDensityAttr().Set(2.0)
+
+        good = UsdGeom.Cube.Define(self.stage, "/Body/Good")
+        good.GetSizeAttr().Set(1.0)
+        UsdPhysics.CollisionAPI.Apply(good.GetPrim())
+
+        rejected = UsdGeom.Cube.Define(self.stage, "/Body/Rejected")
+        rejected.GetSizeAttr().Set(1.0)
+        UsdPhysics.CollisionAPI.Apply(rejected.GetPrim())
+
+        def mass_info(prim):
+            info = UsdPhysics.RigidBodyAPI.MassInformation()
+            if prim.GetName() == "Rejected":
+                info.volume = -1.0
+                return info
+
+            info.volume = 1.0
+            info.inertia = Gf.Matrix3f(1.0 / 6.0)
+            info.centerOfMass = Gf.Vec3f(0.0)
+            info.localPos = Gf.Vec3f(0.0)
+            info.localRot = Gf.Quatf(1.0)
+            return info
+
+        mass, _, _, _ = rigidBodyAPI.ComputeMassProperties(mass_info)
+        self.assertAlmostEqual(mass, 2.0)
+
+        # If every collider is rejected, none should contribute default mass.
+        rejectedStage = Usd.Stage.CreateInMemory()
+        rejectedBody = UsdGeom.Xform.Define(rejectedStage, "/Body")
+        rejectedRigidBodyAPI = UsdPhysics.RigidBodyAPI.Apply(
+            rejectedBody.GetPrim())
+        UsdPhysics.MassAPI.Apply(
+            rejectedBody.GetPrim()).GetDensityAttr().Set(2.0)
+        rejectedOnly = UsdGeom.Cube.Define(
+            rejectedStage, "/Body/Rejected")
+        rejectedOnly.GetSizeAttr().Set(1.0)
+        UsdPhysics.CollisionAPI.Apply(rejectedOnly.GetPrim())
+
+        mass, _, _, _ = rejectedRigidBodyAPI.ComputeMassProperties(mass_info)
+        self.assertAlmostEqual(mass, 0.0)
+
     # density tests
 
     # density test, applied density to a body
