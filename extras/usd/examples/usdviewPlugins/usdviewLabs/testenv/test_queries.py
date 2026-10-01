@@ -106,6 +106,9 @@ class _Prim(object):
     def GetVariantSets(self):
         return _VariantSets()
 
+    def GetVariantSet(self, name):
+        return self.GetVariantSets().GetVariantSet(name)
+
 
 class _Stage(object):
     def __init__(self):
@@ -220,9 +223,11 @@ class QueriesTest(unittest.TestCase):
             "show variants on /World/Car")
         self.assertEqual(query.kind, QUERY_VARIANTS)
         result = execute_query(self.api, query)
-        self.assertEqual(
-            result.value["variants"][0]["selection"],
-            "high")
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(result.value["variants"], [
+            {"name": "lod", "selection": "high"},
+            {"name": "look", "selection": "red"},
+        ])
 
     def test_unknown_question_stays_unknown(self):
         self.assertIsNone(
