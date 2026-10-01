@@ -27,18 +27,19 @@ def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
     invariants = []
 
     safety = report.get("safety") if isinstance(report, dict) else None
-    if isinstance(safety, dict) and isinstance(safety.get("ok"), bool):
-        safety_result = "pass" if safety["ok"] else "fail"
-    else:
-        safety_result = "unknown"
+    violations = safety.get("violations") if isinstance(safety, dict) else None
+    safety_result = "unknown"
+    if isinstance(safety, dict):
+        if safety.get("ok") is False or (isinstance(violations, list) and violations):
+            safety_result = "fail"
+        elif safety.get("ok") is True and isinstance(violations, list):
+            safety_result = "pass"
     evidence.append({
         "id": "labs-safety",
         "kind": "usdview-labs-safety-audit",
         "result": safety_result,
         "details": {
-            "violations": len(safety.get("violations", []))
-            if isinstance(safety, dict) and isinstance(safety.get("violations"), list)
-            else None,
+            "violations": len(violations) if isinstance(violations, list) else None,
         },
     })
     invariants.append({
@@ -48,7 +49,11 @@ def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
     })
 
     sessions = report.get("sessions") if isinstance(report, dict) else None
-    session_result = "pass" if isinstance(sessions, int) and sessions > 0 else "unknown"
+    session_result = (
+        "pass"
+        if isinstance(sessions, int) and not isinstance(sessions, bool) and sessions > 0
+        else "unknown"
+    )
     evidence.append({
         "id": "ux-sessions",
         "kind": "ux-benchmark",

@@ -143,6 +143,73 @@ class PortableEvidenceTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.module.normalize({}, revision)
 
+    def test_boolean_is_not_a_completed_session_count(self):
+        for sessions in (True, False):
+            with self.subTest(sessions=sessions):
+                receipt = self.module.normalize(
+                    {"sessions": sessions, "safety": {"ok": True, "violations": []}},
+                    self.sha,
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+                self.assertEqual(receipt["evidence"][1]["result"], "unknown")
+
+    def test_violation_evidence_overrides_a_successful_safety_summary(self):
+        receipt = self.module.normalize(
+            {"sessions": 1, "safety": {"ok": True, "violations": [{"type": "x"}]}},
+            self.sha,
+            workflow_conclusion="success",
+        )
+        self.assertEqual(receipt["outcome"], "fail")
+        self.assertEqual(receipt["evidence"][0]["result"], "fail")
+        self.assertEqual(receipt["evidence"][0]["details"]["violations"], 1)
+        self.assertEqual(receipt["invariants"][0]["result"], "fail")
+
+    def test_incomplete_violation_list_cannot_establish_safety_pass(self):
+        for safety in (
+            {"ok": True},
+            {"ok": True, "violations": None},
+            {"ok": True, "violations": {}},
+            {"ok": True, "violations": 0},
+            {"ok": True, "violations": ""},
+        ):
+            with self.subTest(safety=safety):
+                receipt = self.module.normalize(
+                    {"sessions": 1, "safety": safety},
+                    self.sha,
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+                self.assertEqual(receipt["invariants"][0]["result"], "unknown")
+
+    def test_invalid_counts_remain_unknown(self):
+        for sessions in (0, -1, None, 1.0, "1", [], {}):
+            with self.subTest(sessions=sessions):
+                receipt = self.module.normalize(
+                    {"sessions": sessions, "safety": {"ok": True, "violations": []}},
+                    self.sha,
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+
+    def test_explicit_safety_failure_survives_incomplete_details(self):
+        for safety in ({"ok": False}, {"ok": False, "violations": []}):
+            with self.subTest(safety=safety):
+                receipt = self.module.normalize(
+                    {"sessions": 1, "safety": safety},
+                    self.sha,
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "fail")
+
+    def test_violations_without_a_success_flag_still_fail(self):
+        receipt = self.module.normalize(
+            {"sessions": 1, "safety": {"violations": [{"type": "x"}]}},
+            self.sha,
+            workflow_conclusion="success",
+        )
+        self.assertEqual(receipt["outcome"], "fail")
+
     def test_requires_exact_revision(self):
         with self.assertRaises(ValueError):
             self.module.normalize({"sessions": 1}, "dev")
