@@ -497,7 +497,7 @@ struct Tf_RefPtr_UniqueChangedCounter {
             return false;
         }
         const auto relaxed = std::memory_order_relaxed;
-        const auto release = std::memory_order_release;
+        const auto acqRel = std::memory_order_acq_rel;
         // Read the current count value.
         std::atomic_int &counter = refBase->_GetRefCount();
         int prevCount = counter.load(relaxed);
@@ -508,14 +508,14 @@ struct Tf_RefPtr_UniqueChangedCounter {
             // If not, we'll call an out-of-line function that handles the
             // locking part.
             if (prevCount != -2 && counter.
-                compare_exchange_weak(prevCount, prevCount+1, release)) {
+                compare_exchange_weak(prevCount, prevCount+1, acqRel)) {
                 return prevCount == -1;
             }
             return _RemoveRefMaybeLocked(refBase, prevCount);
         }
         else {
             // Just drop the count.
-            return counter.fetch_sub(1, release) == 1;
+            return counter.fetch_sub(1, acqRel) == 1;
         }
     }
 
@@ -549,7 +549,7 @@ struct Tf_RefPtr_Counter {
             return false;
         }
         return refBase->_GetRefCount()
-            .fetch_sub(1, std::memory_order_release) == 1;
+            .fetch_sub(1, std::memory_order_acq_rel) == 1;
     }
 
     // Increment ptr's count if it is not zero.  Return true if done so
