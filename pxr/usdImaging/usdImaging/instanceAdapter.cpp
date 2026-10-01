@@ -344,12 +344,13 @@ UsdImagingInstanceAdapter::_Populate(UsdPrim const& prim,
                 protoPath = newProtoPath;
             }
 
+            const auto* primAdapterPtr = primAdapter.get();
             TF_DEBUG(USDIMAGING_INSTANCER).Msg(
                 "[Add Instance NI] <%s>  %s (%s), adapter = %s\n",
                 instancerPath.GetText(), protoPath.GetText(),
                 iter->GetName().GetText(),
-                primAdapter ?
-                    TfType::GetCanonicalTypeName(typeid(*primAdapter)).c_str() :
+                primAdapterPtr ?
+                    TfType::GetCanonicalTypeName(typeid(*primAdapterPtr)).c_str() :
                     "none");
         }
     }
