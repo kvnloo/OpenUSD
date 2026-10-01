@@ -1,0 +1,33 @@
+name: Usdview Labs P6 evidence
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - exp/usdview-labs-p6-replay-bench
+    paths:
+      - extras/usd/examples/usdviewPlugins/usdviewLabs/experiments/ux_bench.py
+      - extras/usd/examples/usdviewPlugins/usdviewLabs/experiments/UX_BENCH.md
+      - extras/usd/examples/usdviewPlugins/usdviewLabs/testenv/test_ux_bench.py
+      - .github/workflows/usdview-labs-p6-evidence.yml
+
+jobs:
+  session-evidence:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+      - name: Install Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 #v5.6.0
+        with:
+          python-version: "3.11.16"
+      - name: Test benchmark evidence without USD or Qt
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: >-
+          python -m unittest discover
+          -s extras/usd/examples/usdviewPlugins/usdviewLabs/testenv
+          -p test_ux_bench.py -v
