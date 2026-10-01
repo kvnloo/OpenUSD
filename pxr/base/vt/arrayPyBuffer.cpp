@@ -66,8 +66,8 @@ template <> constexpr char Vt_FmtFor<short>() { return 'h'; }
 template <> constexpr char Vt_FmtFor<unsigned short>() { return 'H'; }
 template <> constexpr char Vt_FmtFor<int>() { return 'i'; }
 template <> constexpr char Vt_FmtFor<unsigned int>() { return 'I'; }
-template <> constexpr char Vt_FmtFor<long>() { return 'l'; }
-template <> constexpr char Vt_FmtFor<unsigned long>() { return 'L'; }
+template <> [[maybe_unused]] constexpr char Vt_FmtFor<long>() { return 'l'; }
+template <> [[maybe_unused]] constexpr char Vt_FmtFor<unsigned long>() { return 'L'; }
 template <> constexpr char Vt_FmtFor<long long>() { return 'q'; }
 template <> constexpr char Vt_FmtFor<unsigned long long>() { return 'Q'; }
 template <> constexpr char Vt_FmtFor<GfHalf>() { return 'e'; }
