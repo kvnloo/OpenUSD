@@ -194,13 +194,13 @@ class TestTrace(unittest.TestCase):
 
         gc.enabled = True
         sleepTime = 1.0
-        pre_begin = time.time()
+        pre_begin = time.perf_counter()
         b = gc.BeginEvent("Test tuple")
-        post_begin = time.time()
+        post_begin = time.perf_counter()
         time.sleep(sleepTime)
-        pre_end = time.time()
+        pre_end = time.perf_counter()
         e = gc.EndEvent("Test tuple")
-        post_end = time.time()
+        post_end = time.perf_counter()
 
         elapsedSeconds = Trace.GetElapsedSeconds(b, e)
         expectedMinSeconds = pre_end - post_begin
