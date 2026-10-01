@@ -11,7 +11,11 @@
 #include "pxr/base/tf/refPtr.h"
 #include "pxr/base/tf/weakPtr.h"
 #include "pxr/base/tf/safeTypeCompare.h"
+
+#include <atomic>
 #include <iostream>
+#include <thread>
+#include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -157,12 +161,70 @@ static void TestHash(){
     }
 }
 
+namespace {
+
+constexpr int _RefPtrVisibilityThreadCount = 4;
+constexpr int _RefPtrVisibilityExpectedSum = 10;
+
+template <class Base>
+class _RefPtrVisibilityObject : public Base {
+public:
+    explicit _RefPtrVisibilityObject(std::atomic<int>* observed)
+        : _observed(observed) {}
+
+    ~_RefPtrVisibilityObject() override {
+        int sum = 0;
+        for (int value : slots) {
+            sum += value;
+        }
+        _observed->store(sum, std::memory_order_relaxed);
+    }
+
+    int slots[_RefPtrVisibilityThreadCount] = {};
+
+private:
+    std::atomic<int>* _observed;
+};
+
+template <class Base>
+void
+TestConcurrentLastRefVisibility()
+{
+    for (int iteration = 0; iteration != 100; ++iteration) {
+        std::atomic<int> observed{-1};
+        TfRefPtr<_RefPtrVisibilityObject<Base>> ptr =
+            TfCreateRefPtr(new _RefPtrVisibilityObject<Base>(&observed));
+
+        std::vector<std::thread> threads;
+        threads.reserve(_RefPtrVisibilityThreadCount);
+        for (int i = 0; i != _RefPtrVisibilityThreadCount; ++i) {
+            threads.emplace_back([ref = ptr, i]() mutable {
+                ref->slots[i] = i + 1;
+                ref.Reset();
+            });
+        }
+
+        ptr.Reset();
+        for (std::thread& thread : threads) {
+            thread.join();
+        }
+
+        TF_AXIOM(
+            observed.load(std::memory_order_relaxed) ==
+            _RefPtrVisibilityExpectedSum);
+    }
+}
+
+} // anonymous namespace
+
 static bool
 Test_TfRefPtr()
 {
     TestConversions();
     TestNullptrComparisons();
     TestHash();
+    TestConcurrentLastRefVisibility<TfSimpleRefBase>();
+    TestConcurrentLastRefVisibility<TfRefBase>();
     
     NodeRefPtr chain1 = MakeChain(10);
     NodeRefPtr chain2 = MakeChain(5);

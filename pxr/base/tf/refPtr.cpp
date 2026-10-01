@@ -43,11 +43,11 @@ bool
 Tf_RefPtr_UniqueChangedCounter
 ::_RemoveRefMaybeLocked(TfRefBase const *refBase, int prevCount)
 {
-    const auto release = std::memory_order_release;
+    const auto acqRel = std::memory_order_acq_rel;
     auto &counter = refBase->_GetRefCount();
     // While we haven't seen a -2, just try to drop the count.
     while (prevCount != -2) {
-        if (counter.compare_exchange_weak(prevCount, prevCount+1, release)) {
+        if (counter.compare_exchange_weak(prevCount, prevCount+1, acqRel)) {
             return prevCount == -1;
         }
     }
@@ -55,7 +55,7 @@ Tf_RefPtr_UniqueChangedCounter
     TfRefBase::UniqueChangedListener const &listener =
         TfRefBase::_uniqueChangedListener;
     listener.lock();
-    prevCount = counter.fetch_add(1, release);
+    prevCount = counter.fetch_add(1, acqRel);
     if (prevCount == -2) {
         // Invoke uniqueness changed listener.
         listener.func(refBase, true);
