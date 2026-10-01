@@ -512,6 +512,37 @@ class TestUsdPhysicsParsing(unittest.TestCase):
         self.assertTrue(rigidbody_found)
         self.assertTrue(cube_found)
 
+    def test_cube_reflected_scale_parse(self):
+        def parse_cube(scale):
+            stage = Usd.Stage.CreateInMemory()
+            UsdPhysics.Scene.Define(stage, '/physicsScene')
+
+            cube = UsdGeom.Cube.Define(stage, "/cube")
+            cube.GetSizeAttr().Set(2.0)
+            cube.AddScaleOp().Set(Gf.Vec3f(*scale))
+            UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
+
+            ret_dict = UsdPhysics.UsdPhysicsLoadStageFromPrimRange(
+                stage, ["/"])
+            prim_paths, descs = ret_dict[UsdPhysics.ObjectType.CubeShape]
+            self.assertEqual(len(descs), 1)
+            return descs[0]
+
+        positive = parse_cube((2.0, 3.0, 4.0))
+        reflected = parse_cube((-2.0, 3.0, 4.0))
+        fully_reflected = parse_cube((-2.0, -3.0, -4.0))
+
+        expected = Gf.Vec3f(2.0, 3.0, 4.0)
+        self.assertTrue(Gf.IsClose(
+            positive.halfExtents, expected, toleranceEpsilon))
+        self.assertTrue(Gf.IsClose(
+            reflected.halfExtents, expected, toleranceEpsilon))
+        self.assertTrue(Gf.IsClose(
+            fully_reflected.halfExtents, expected, toleranceEpsilon))
+        self.assertTrue(positive.isValid)
+        self.assertTrue(reflected.isValid)
+        self.assertTrue(fully_reflected.isValid)
+
     def test_rigidbody_disabled_nested_body_collision_parse(self):
         """A nested rigid body only owns colliders while it is enabled. A
         collider below a disabled nested body must be reported as belonging to
