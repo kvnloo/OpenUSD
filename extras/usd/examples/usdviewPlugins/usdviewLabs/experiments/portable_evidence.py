@@ -19,6 +19,22 @@ def _result(value):
     return "unknown"
 
 
+def _measurement_complete(report):
+    # Legacy P6 reports have no measurement diagnostics. When present, preserve
+    # incomplete or invalid observations as unknown, even if some sessions ran.
+    if not isinstance(report, dict) or "measurement" not in report:
+        return True
+    measurement = report["measurement"]
+    if not isinstance(measurement, dict) or measurement.get("ok") is not True:
+        return False
+    invalid_fields = ("invalid_records", "invalid_sessions", "incomplete_sessions")
+    for field in invalid_fields + ("duplicate_events",):
+        if not isinstance(measurement.get(field), list):
+            return False
+    # Exact duplicate events are idempotent diagnostics, not invalid sessions.
+    return not any(measurement[field] for field in invalid_fields)
+
+
 def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
     if not isinstance(revision, str) or not _SHA.fullmatch(revision):
         raise ValueError("revision must be a full 40-character Git SHA")
@@ -51,7 +67,12 @@ def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
     sessions = report.get("sessions") if isinstance(report, dict) else None
     session_result = (
         "pass"
-        if isinstance(sessions, int) and not isinstance(sessions, bool) and sessions > 0
+        if (
+            isinstance(sessions, int)
+            and not isinstance(sessions, bool)
+            and sessions > 0
+            and _measurement_complete(report)
+        )
         else "unknown"
     )
     evidence.append({
