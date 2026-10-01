@@ -70,3 +70,22 @@ pxr_register_test(testUsdCatFlattenLayerStack
     DIFF_COMPARE output.usda
     EXPECTED_RETURN_CODE 0
 )
+
+pxr_register_test(testUsdCatFileFormatArg
+    COMMAND "${CMAKE_INSTALL_PREFIX}/bin/usdcat input.usd --fileFormatArg format=usda --fileFormatArg custom=value --out output.usda"
+    TESTENV testenv/testUsdCatFileFormatArg
+    DIFF_COMPARE output.usda
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testUsdCatInvalidFileFormatArg
+    COMMAND "${CMAKE_INSTALL_PREFIX}/bin/usdcat input.usd --fileFormatArg format=invalid --loadOnly"
+    TESTENV testenv/testUsdCatFileFormatArg
+    EXPECTED_RETURN_CODE 1
+)
+
+pxr_register_test(testUsdCatMalformedFileFormatArg
+    COMMAND "${CMAKE_INSTALL_PREFIX}/bin/usdcat input.usd --fileFormatArg invalid --loadOnly"
+    TESTENV testenv/testUsdCatFileFormatArg
+    EXPECTED_RETURN_CODE 1
+)
