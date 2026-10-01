@@ -80,6 +80,69 @@ class PortableEvidenceTest(unittest.TestCase):
         )
         self.assertEqual(receipt["outcome"], "fail")
 
+    def test_successful_workflow_requires_completed_required_jobs(self):
+        for conclusion in (None, "skipped", "neutral", "in_progress", "unknown"):
+            for required in (None, True):
+                with self.subTest(conclusion=conclusion, required=required):
+                    job = {"name": "Linux", "conclusion": conclusion}
+                    if required is not None:
+                        job["required"] = required
+                    receipt = self.module.normalize(
+                        {"sessions": 4, "safety": {"ok": True, "violations": []}},
+                        self.sha,
+                        [job],
+                        workflow_conclusion="success",
+                    )
+                    self.assertEqual(receipt["outcome"], "unknown")
+                    self.assertEqual(receipt["evidence"][-1]["result"], "unknown")
+                    self.assertTrue(receipt["evidence"][-1]["details"]["required"])
+
+    def test_missing_required_job_conclusion_is_unknown(self):
+        receipt = self.module.normalize(
+            {"sessions": 4, "safety": {"ok": True, "violations": []}},
+            self.sha,
+            [{"name": "Linux"}],
+            workflow_conclusion="success",
+        )
+        self.assertEqual(receipt["outcome"], "unknown")
+        self.assertEqual(receipt["evidence"][-1]["details"]["name"], "Linux")
+
+    def test_only_boolean_false_marks_a_job_optional(self):
+        for required in (None, 0, "", "false", [], {}):
+            with self.subTest(required=required):
+                receipt = self.module.normalize(
+                    {"sessions": 4, "safety": {"ok": True, "violations": []}},
+                    self.sha,
+                    [{"name": "Linux", "conclusion": "skipped", "required": required}],
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+                self.assertTrue(receipt["evidence"][-1]["details"]["required"])
+
+    def test_optional_failed_job_still_fails_workflow(self):
+        receipt = self.module.normalize(
+            {"sessions": 4, "safety": {"ok": True, "violations": []}},
+            self.sha,
+            [{"name": "GPUTests", "conclusion": "failure", "required": False}],
+            workflow_conclusion="success",
+        )
+        self.assertEqual(receipt["outcome"], "fail")
+
+    def test_unknown_workflow_cannot_be_replaced_by_successful_jobs(self):
+        receipt = self.module.normalize(
+            {"sessions": 4, "safety": {"ok": True, "violations": []}},
+            self.sha,
+            [{"name": "Linux", "conclusion": "success"}],
+            workflow_conclusion="in_progress",
+        )
+        self.assertEqual(receipt["outcome"], "unknown")
+
+    def test_revision_must_contain_exactly_forty_hex_characters(self):
+        for revision in (self.sha + "\n", self.sha + " ", None, 1):
+            with self.subTest(revision=revision):
+                with self.assertRaises(ValueError):
+                    self.module.normalize({}, revision)
+
     def test_requires_exact_revision(self):
         with self.assertRaises(ValueError):
             self.module.normalize({"sessions": 1}, "dev")

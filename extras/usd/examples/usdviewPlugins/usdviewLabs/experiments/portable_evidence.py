@@ -8,7 +8,7 @@ import sys
 
 
 _SCHEMA = "z0.evidence.v0"
-_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
+_SHA = re.compile(r"[0-9a-fA-F]{40}")
 
 
 def _result(value):
@@ -20,7 +20,7 @@ def _result(value):
 
 
 def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
-    if not _SHA.match(revision):
+    if not isinstance(revision, str) or not _SHA.fullmatch(revision):
         raise ValueError("revision must be a full 40-character Git SHA")
 
     evidence = []
@@ -77,20 +77,17 @@ def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
             "details": {
                 "name": name,
                 "conclusion": job.get("conclusion"),
-                "required": bool(job.get("required", True)),
+                "required": job.get("required", True) is not False,
             },
         })
 
     if any(item["result"] == "fail" for item in evidence):
         outcome = "fail"
-    elif workflow_result == "pass" and safety_result == "pass" and session_result == "pass":
-        # GitHub may mark optional matrix jobs skipped while the workflow itself
-        # concludes success. Preserve those job-level unknowns without
-        # downgrading the verified workflow outcome.
-        outcome = "pass"
     elif workflow_result == "fail":
         outcome = "fail"
     else:
+        # Optional skipped jobs retain their unknown evidence items. Required
+        # jobs must be complete even when the workflow summary claims success.
         required_results = [
             item["result"]
             for item in evidence
