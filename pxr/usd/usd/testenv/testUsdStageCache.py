@@ -266,6 +266,22 @@ class TestUsdStageCache(unittest.TestCase):
                 assert not cache1.Contains(newStage3)
                 assert cache1.Size() == 1
 
+        # OpenMasked() always creates a fresh stage and must not consult or
+        # populate active stage caches.
+        cache1.Clear()
+        maskedRoot = Sdf.Layer.CreateAnonymous()
+        with Usd.StageCacheContext(cache1):
+            maskedStage = Usd.Stage.OpenMasked(
+                maskedRoot, Usd.StagePopulationMask.All())
+            assert maskedStage
+            assert cache1.IsEmpty()
+
+            ordinaryStage = Usd.Stage.Open(maskedRoot)
+            assert ordinaryStage
+            assert ordinaryStage is not maskedStage
+            assert cache1.Contains(ordinaryStage)
+            assert not cache1.Contains(maskedStage)
+
         # Try blocking cache writes only.
         cache1.Clear()
         with Usd.StageCacheContext(cache1):
