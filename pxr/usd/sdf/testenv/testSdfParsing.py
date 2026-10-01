@@ -47,6 +47,8 @@ class TestSdfParsing(unittest.TestCase):
         # This will mean that your new test runs first and you can spot
         # failures much quicker.
         testFiles = '''
+        235_bad_dictionary_role_array.usda
+        234_bad_dictionary_role.usda
         233_dictionary_pathExpressions.usda
         232_bad_layer_with_utf32_BOM.usda
         231_bad_layer_with_utf16_BOM.usda
