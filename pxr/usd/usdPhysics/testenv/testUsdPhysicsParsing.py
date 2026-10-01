@@ -287,6 +287,39 @@ class TestUsdPhysicsParsing(unittest.TestCase):
         self.assertAlmostEqual(desc.spherePoints[0].radius, 2.0)
         self.assertAlmostEqual(desc.spherePoints[1].radius, 3.0)
 
+        # constant widths attr
+        stage = Usd.Stage.CreateInMemory()
+        UsdPhysics.Scene.Define(stage, '/physicsScene')
+        shape = UsdGeom.Points.Define(stage, "/points")
+        UsdPhysics.CollisionAPI.Apply(shape.GetPrim())
+        shape.GetPointsAttr().Set([Gf.Vec3f(1.0), Gf.Vec3f(2.0)])
+        shape.GetWidthsAttr().Set([4.0])
+        shape.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+
+        desc = parse_sphere_points(stage)
+        self.assertTrue(desc.isValid)
+        self.assertEqual(len(desc.spherePoints), 2)
+        self.assertAlmostEqual(desc.spherePoints[0].radius, 2.0)
+        self.assertAlmostEqual(desc.spherePoints[1].radius, 2.0)
+
+        # constant primvars:widths
+        stage = Usd.Stage.CreateInMemory()
+        UsdPhysics.Scene.Define(stage, '/physicsScene')
+        shape = UsdGeom.Points.Define(stage, "/points")
+        UsdPhysics.CollisionAPI.Apply(shape.GetPrim())
+        shape.GetPointsAttr().Set([Gf.Vec3f(1.0), Gf.Vec3f(2.0)])
+        primvarsAPI = UsdGeom.PrimvarsAPI(shape.GetPrim())
+        widthsPv = primvarsAPI.CreatePrimvar(
+            "widths", Sdf.ValueTypeNames.FloatArray,
+            UsdGeom.Tokens.constant)
+        widthsPv.Set([4.0])
+
+        desc = parse_sphere_points(stage)
+        self.assertTrue(desc.isValid)
+        self.assertEqual(len(desc.spherePoints), 2)
+        self.assertAlmostEqual(desc.spherePoints[0].radius, 2.0)
+        self.assertAlmostEqual(desc.spherePoints[1].radius, 2.0)
+
         # only primvars:widths authored
         stage = Usd.Stage.CreateInMemory()
         UsdPhysics.Scene.Define(stage, '/physicsScene')
