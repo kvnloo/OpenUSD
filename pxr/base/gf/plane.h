@@ -69,9 +69,14 @@ class GfPlane
         Set(eqn);
     }
 
-    /// Sets this to the plane perpendicular to \p normal and at \p distance
-    /// units from the origin. The passed-in normal is normalized to unit
-    /// length first.
+    /// Sets this to the plane perpendicular to \p normal whose signed
+    /// coordinate along the normalized normal is \p distanceToOrigin.
+    /// Equivalently, points \p x on the plane satisfy
+    /// `dot(normalizedNormal, x) = distanceToOrigin`.
+    ///
+    /// This is not the signed result of GetDistance() evaluated at the
+    /// origin; that value has the opposite sign. The passed-in normal is
+    /// normalized to unit length first.
     void                Set(const GfVec3d &normal, double distanceToOrigin) {
         _normal = normal.GetNormalized();
         _distance = distanceToOrigin;
@@ -92,8 +97,11 @@ class GfPlane
                             const GfVec3d &p1,
                             const GfVec3d &p2);
 
-    /// This method sets this to the plane given by the equation 
+    /// This method sets this to the plane given by the equation
     /// \p eqn[0] * x + \p eqn[1] * y + \p eqn[2] * z + \p eqn[3] = 0.
+    /// Internally the normalized plane is represented as
+    /// `dot(normal, x) = distance`, so the stored distance is
+    /// `-eqn[3] / length(eqn.xyz)`.
     GF_API
     void                Set(const GfVec4d &eqn);
 
@@ -102,7 +110,12 @@ class GfPlane
         return _normal;
     }
 
-    /// Returns the distance of the plane from the origin.
+    /// Returns the plane's signed coordinate along its normal from the
+    /// origin. For a unit normal \c n, points on the plane satisfy
+    /// `dot(n, x) = GetDistanceFromOrigin()`.
+    ///
+    /// Consequently, the signed point-to-plane distance returned by
+    /// `GetDistance(GfVec3d(0))` is the negative of this value.
     double              GetDistanceFromOrigin() const {
         return _distance;
     }
