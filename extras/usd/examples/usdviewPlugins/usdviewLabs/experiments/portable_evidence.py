@@ -94,7 +94,8 @@ def normalize(report, revision, ci_jobs=None, workflow_conclusion=None):
 
     for index, job in enumerate(ci_jobs or []):
         if not isinstance(job, dict):
-            continue
+            # Missing job details are required unknown evidence, not an absent job.
+            job = {}
         name = str(job.get("name") or f"job-{index}")
         evidence.append({
             "id": f"buildusd-{index}",

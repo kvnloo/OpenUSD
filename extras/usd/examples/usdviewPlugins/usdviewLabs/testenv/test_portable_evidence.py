@@ -313,6 +313,50 @@ class PortableEvidenceTest(unittest.TestCase):
         )
         self.assertEqual(receipt["outcome"], "fail")
 
+    def test_malformed_job_entries_remain_required_unknown(self):
+        for malformed in (None, False, 0, "Linux", [], ["Linux"]):
+            with self.subTest(malformed=malformed):
+                receipt = self.module.normalize(
+                    {"sessions": 1, "safety": {"ok": True, "violations": []}},
+                    self.sha,
+                    [malformed],
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+                job = receipt["evidence"][-1]
+                self.assertEqual(job["kind"], "ci-job")
+                self.assertEqual(job["result"], "unknown")
+                self.assertTrue(job["details"]["required"])
+
+    def test_malformed_job_preserves_evidence_positions(self):
+        receipt = self.module.normalize(
+            {"sessions": 1, "safety": {"ok": True, "violations": []}},
+            self.sha,
+            [
+                {"name": "Linux", "conclusion": "success"},
+                None,
+                {"name": "Windows", "conclusion": "success"},
+            ],
+            workflow_conclusion="success",
+        )
+        self.assertEqual(receipt["outcome"], "unknown")
+        jobs = [item for item in receipt["evidence"] if item["kind"] == "ci-job"]
+        self.assertEqual([job["id"] for job in jobs],
+                         ["buildusd-0", "buildusd-1", "buildusd-2"])
+        self.assertEqual([job["details"]["name"] for job in jobs],
+                         ["Linux", "job-1", "Windows"])
+        self.assertEqual([job["result"] for job in jobs],
+                         ["pass", "unknown", "pass"])
+
+    def test_malformed_job_cannot_hide_an_explicit_failure(self):
+        receipt = self.module.normalize(
+            {"sessions": 1, "safety": {"ok": True, "violations": []}},
+            self.sha,
+            [None, {"name": "Linux", "conclusion": "failure"}],
+            workflow_conclusion="success",
+        )
+        self.assertEqual(receipt["outcome"], "fail")
+
     def test_requires_exact_revision(self):
         with self.assertRaises(ValueError):
             self.module.normalize({"sessions": 1}, "dev")
