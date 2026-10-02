@@ -98,7 +98,9 @@ function(pxr_python_bin BIN_NAME)
     # for backwards compatibility with other build systems.
     add_custom_command(
         OUTPUT ${outfile}
-        DEPENDS ${infile}
+        DEPENDS
+            ${infile}
+            ${PROJECT_SOURCE_DIR}/cmake/macros/shebang.py
         COMMENT "Substituting Python shebang"
         COMMAND
             ${PYTHON_EXECUTABLE}
@@ -121,6 +123,7 @@ function(pxr_python_bin BIN_NAME)
     if(WIN32)
         add_custom_command(
             OUTPUT ${outfile}.cmd
+            DEPENDS ${PROJECT_SOURCE_DIR}/cmake/macros/win_py_wrapper.py
             COMMENT "Creating Python cmd wrapper"
             COMMAND
                 ${PYTHON_EXECUTABLE}
