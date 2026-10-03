@@ -12,6 +12,7 @@ import argparse
 import collections
 import json
 import os
+import random
 import statistics
 import sys
 import time
@@ -21,6 +22,7 @@ import uuid
 MODES = ("stock", "palette", "voice")
 EVENT_START = "ux_bench_start"
 EVENT_FINISH = "ux_bench_finish"
+EVENT_PROBE = "ux_bench_probe"
 
 
 def _labs_dir(configDir):
@@ -160,6 +162,140 @@ def summarize_sessions(sessions):
     return summary
 
 
+
+def build_trial_plan(workflows, modes=("stock", "palette"),
+                     repeats=5, seed=0):
+    if repeats < 1:
+        raise ValueError("repeats must be positive")
+    unknownModes = [
+        mode for mode in modes
+        if mode not in MODES]
+    if unknownModes:
+        raise ValueError(
+            "unknown modes: {}".format(
+                ", ".join(unknownModes)))
+
+    workflowIds = [
+        item["id"] for item in workflows]
+    rng = random.Random(seed)
+    trials = []
+
+    for repetition in range(repeats):
+        order = list(workflowIds)
+        rng.shuffle(order)
+        for workflow in order:
+            modeOrder = list(modes)
+            rng.shuffle(modeOrder)
+            for mode in modeOrder:
+                trials.append({
+                    "trial": len(trials) + 1,
+                    "repetition": repetition + 1,
+                    "workflow": workflow,
+                    "mode": mode,
+                })
+
+    return trials
+
+
+def _delta_ratio(candidate, baseline):
+    return {
+        "delta": candidate - baseline,
+        "ratio": (
+            None if baseline == 0
+            else candidate / baseline),
+    }
+
+
+def compare_modes(summary, baseline="stock"):
+    workflows = set()
+    modes = set()
+    for key in summary:
+        workflow, mode = key.rsplit(":", 1)
+        workflows.add(workflow)
+        modes.add(mode)
+
+    comparisons = {}
+    for candidateMode in sorted(modes):
+        if candidateMode == baseline:
+            continue
+
+        rows = {}
+        for workflow in sorted(workflows):
+            baselineKey = "{}:{}".format(
+                workflow, baseline)
+            candidateKey = "{}:{}".format(
+                workflow, candidateMode)
+            if (baselineKey not in summary or
+                    candidateKey not in summary):
+                continue
+
+            baselineRow = summary[baselineKey]
+            candidateRow = summary[candidateKey]
+            rows[workflow] = {
+                "n": {
+                    baseline: baselineRow["n"],
+                    candidateMode: candidateRow["n"],
+                },
+                "success_rate": _delta_ratio(
+                    candidateRow["success_rate"],
+                    baselineRow["success_rate"]),
+                "time_to_result_s": {
+                    "p50": _delta_ratio(
+                        candidateRow[
+                            "time_to_result_s"]["p50"],
+                        baselineRow[
+                            "time_to_result_s"]["p50"]),
+                    "p95": _delta_ratio(
+                        candidateRow[
+                            "time_to_result_s"]["p95"],
+                        baselineRow[
+                            "time_to_result_s"]["p95"]),
+                },
+                "steps": {
+                    "p50": _delta_ratio(
+                        candidateRow["steps"]["p50"],
+                        baselineRow["steps"]["p50"]),
+                    "p95": _delta_ratio(
+                        candidateRow["steps"]["p95"],
+                        baselineRow["steps"]["p95"]),
+                },
+            }
+
+        comparisons[
+            "{}_vs_{}".format(
+                candidateMode, baseline)] = rows
+
+    return comparisons
+
+
+def summarize_probes(records):
+    grouped = collections.defaultdict(list)
+    for record in records:
+        if record.get("event") != EVENT_PROBE:
+            continue
+        grouped[(
+            str(record.get("name", "")),
+            str(record.get("mode", "")),
+            str(record.get("workflow", "")),
+            str(record.get("unit", "")),
+        )].append(float(record.get("value", 0.0)))
+
+    summary = {}
+    for key, values in sorted(grouped.items()):
+        name, mode, workflow, unit = key
+        label = ":".join(
+            item for item in (
+                name, mode, workflow)
+            if item)
+        summary[label] = {
+            "n": len(values),
+            "unit": unit,
+            "p50": statistics.median(values),
+            "p95": _percentile(values, 0.95),
+            "max": max(values),
+        }
+    return summary
+
 def audit_receipts(records):
     violations = []
     evidence = collections.Counter()
@@ -210,6 +346,51 @@ def audit_receipts(records):
     }
 
 
+
+def command_plan(args):
+    workflows = load_workflows(args.workflows)
+    trials = build_trial_plan(
+        workflows,
+        modes=tuple(args.modes),
+        repeats=args.repeats,
+        seed=args.seed)
+    payload = {
+        "seed": args.seed,
+        "repeats": args.repeats,
+        "modes": list(args.modes),
+        "trials": trials,
+    }
+    raw = json.dumps(
+        payload,
+        indent=2,
+        sort_keys=True)
+    if args.output:
+        with open(args.output, "w") as stream:
+            stream.write(raw + "\n")
+    print(raw)
+    return 0
+
+
+def command_probe(args):
+    workflows = load_workflows(args.workflows)
+    known = {
+        item["id"] for item in workflows}
+    if args.workflow and args.workflow not in known:
+        raise SystemExit(
+            "unknown workflow: {}".format(
+                args.workflow))
+
+    _append(args.config_dir, {
+        "event": EVENT_PROBE,
+        "name": args.name,
+        "value": float(args.value),
+        "unit": args.unit,
+        "mode": args.mode or "",
+        "workflow": args.workflow or "",
+        "note": str(args.note or "")[:500],
+    })
+    return 0
+
 def command_start(args):
     workflows = load_workflows(args.workflows)
     known = {
@@ -244,9 +425,12 @@ def command_report(args):
     records = read_receipts(
         args.config_dir)
     sessions = pair_sessions(records)
+    summary = summarize_sessions(sessions)
     payload = {
         "sessions": len(sessions),
-        "summary": summarize_sessions(sessions),
+        "summary": summary,
+        "comparisons": compare_modes(summary),
+        "probes": summarize_probes(records),
         "safety": audit_receipts(records),
     }
     print(json.dumps(
@@ -274,6 +458,45 @@ def build_parser():
     sub = parser.add_subparsers(
         dest="command",
         required=True)
+
+    plan = sub.add_parser("plan")
+    plan.add_argument(
+        "--modes",
+        nargs="+",
+        choices=MODES,
+        default=["stock", "palette"])
+    plan.add_argument(
+        "--repeats",
+        type=int,
+        default=5)
+    plan.add_argument(
+        "--seed",
+        type=int,
+        default=0)
+    plan.add_argument(
+        "--output")
+    plan.set_defaults(func=command_plan)
+
+    probe = sub.add_parser("probe")
+    probe.add_argument(
+        "--name",
+        required=True)
+    probe.add_argument(
+        "--value",
+        required=True,
+        type=float)
+    probe.add_argument(
+        "--unit",
+        required=True)
+    probe.add_argument(
+        "--mode",
+        choices=MODES)
+    probe.add_argument(
+        "--workflow")
+    probe.add_argument(
+        "--note",
+        default="")
+    probe.set_defaults(func=command_probe)
 
     start = sub.add_parser("start")
     start.add_argument(
