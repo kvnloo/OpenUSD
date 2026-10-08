@@ -1046,7 +1046,8 @@ UsdStage::_InstantiateStage(const SdfLayerRefPtr &rootLayer,
                             const SdfLayerRefPtr &sessionLayer,
                             const ArResolverContext &pathResolverContext,
                             const UsdStagePopulationMask &mask,
-                            InitialLoadSet load)
+                            InitialLoadSet load,
+                            bool publishToCaches)
 {
     TF_DEBUG(USD_STAGE_OPEN)
         .Msg("UsdStage::_InstantiateStage: Creating new UsdStage\n");
@@ -1110,9 +1111,11 @@ UsdStage::_InstantiateStage(const SdfLayerRefPtr &rootLayer,
     stage->_RegisterPerLayerNotices();
     stage->_RegisterResolverChangeNotice();
 
-    // Publish this stage into all current writable caches.
-    for (const auto cache : UsdStageCacheContext::_GetWritableCaches()) {
-        cache->Insert(stage);
+    // Publish this stage into all current writable caches when requested.
+    if (publishToCaches) {
+        for (const auto cache : UsdStageCacheContext::_GetWritableCaches()) {
+            cache->Insert(stage);
+        }
     }
 
     // Debug timing info
@@ -1401,7 +1404,8 @@ public:
             _pathResolverContext ? *_pathResolverContext :
             _CreatePathResolverContext(_rootLayer),
             UsdStagePopulationMask::All(),
-            _initialLoadSet);
+            _initialLoadSet,
+            /* publishToCaches = */ true);
     }
 
 private:
@@ -1553,7 +1557,8 @@ UsdStage::OpenMasked(const SdfLayerHandle& rootLayer,
                              _CreateAnonymousSessionLayer(rootLayer),
                              _CreatePathResolverContext(rootLayer),
                              mask,
-                             load);
+                             load,
+                             /* publishToCaches = */ false);
 }
 
 /* static */
@@ -1581,7 +1586,8 @@ UsdStage::OpenMasked(const SdfLayerHandle& rootLayer,
                              SdfLayerRefPtr(sessionLayer),
                              _CreatePathResolverContext(rootLayer),
                              mask,
-                             load);
+                             load,
+                             /* publishToCaches = */ false);
 }
 
 /* static */
@@ -1609,7 +1615,8 @@ UsdStage::OpenMasked(const SdfLayerHandle& rootLayer,
                              _CreateAnonymousSessionLayer(rootLayer),
                              pathResolverContext,
                              mask,
-                             load);
+                             load,
+                             /* publishToCaches = */ false);
 }
 
 /* static */
@@ -1639,7 +1646,8 @@ UsdStage::OpenMasked(const SdfLayerHandle& rootLayer,
                              SdfLayerRefPtr(sessionLayer),
                              pathResolverContext,
                              mask,
-                             load);
+                             load,
+                             /* publishToCaches = */ false);
 }
 
 UsdPrimDefinition::Property
