@@ -314,9 +314,12 @@ bool _ParseCubeShapeDesc(const UsdPhysicsCollisionAPI& collisionAPI,
             // Add scale
             {
                 const GfVec3d sc = tr.GetScale();
-                // scale is taken, its a part of the cube size, as the physics 
-                // does not support scale
-                halfExtents = GfVec3f(sc);
+                // Scale contributes to the cube dimensions, but reflection
+                // sign does not. Physics shape dimensions must be non-negative.
+                halfExtents = GfVec3f(
+                    fabsf(float(sc[0])),
+                    fabsf(float(sc[1])),
+                    fabsf(float(sc[2])));
             }
 
             // Get shape parameters
