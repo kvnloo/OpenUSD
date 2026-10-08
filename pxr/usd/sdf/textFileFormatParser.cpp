@@ -1837,6 +1837,22 @@ struct TextParserAction<DictionaryType>
         // pop off the type name state as we are done
         _PopContext(context);
 
+        const SdfValueTypeName valueType =
+            SdfSchema::GetInstance().FindType(context.dictionaryTypeName);
+        if (valueType && !valueType.GetRole().IsEmpty())
+        {
+            std::string errorMessage = "Role value typename '" +
+                context.dictionaryTypeName +
+                "' is not supported for dictionary values";
+            Sdf_TextFileFormatParser_Err(
+                context,
+                in.input(),
+                in.position(),
+                errorMessage);
+
+            throw PEGTL_NS::parse_error(errorMessage, in);
+        }
+
         if (!context.values.SetupFactory(context.dictionaryTypeName))
         {
             std::string errorMessage = "Unrecognized value typename '" +
