@@ -424,6 +424,36 @@ def "Root"
 
         self.assertEqual(newLayer.ExportToString(), anonLayer.ExportToString())
 
+        # Import across file formats. The source format must be used to
+        # read the file while the destination layer keeps its own format.
+        for destinationExt, sourceExt in [('usda', 'usdc'), ('usdc', 'usda')]:
+            destinationPath = (
+                'TestLayerImportDestination.' + destinationExt)
+            sourcePath = 'TestLayerImportSource.' + sourceExt
+
+            destinationLayer = Sdf.Layer.CreateNew(destinationPath)
+            destinationLayer.comment = 'destination'
+            self.assertTrue(destinationLayer.Save())
+
+            sourceLayer = Sdf.Layer.CreateNew(sourcePath)
+            sourceLayer.comment = 'source'
+            Sdf.PrimSpec(sourceLayer, 'ImportedRoot', Sdf.SpecifierDef)
+            self.assertTrue(sourceLayer.Save())
+
+            destinationFormat = destinationLayer.GetFileFormat().formatId
+            destinationIdentifier = destinationLayer.identifier
+
+            self.assertTrue(destinationLayer.Import(sourcePath))
+            self.assertEqual(destinationLayer.comment, 'source')
+            self.assertTrue(
+                destinationLayer.GetPrimAtPath('/ImportedRoot'))
+            self.assertEqual(
+                destinationLayer.GetFileFormat().formatId,
+                destinationFormat)
+            self.assertEqual(
+                destinationLayer.identifier,
+                destinationIdentifier)
+
         # Test error cases. These should not affect the contents of the
         # destination layer.
         self.assertFalse(anonLayer.Import(''))

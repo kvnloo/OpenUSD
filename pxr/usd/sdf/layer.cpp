@@ -1149,7 +1149,27 @@ SdfLayer::Import(const string &layerPath)
         return false;
     }
 
-    return _Read(layerPath, filePath, /* metadataOnly = */ false);
+    const SdfFileFormatConstPtr sourceFormat =
+        SdfFileFormat::FindByExtension(filePath.GetPathString());
+
+    // Preserve the existing direct-read path when the source resolves to
+    // the same file format as this layer. This avoids an extra temporary
+    // layer and retains the file format's normal incremental update behavior.
+    if (!sourceFormat || sourceFormat == GetFileFormat()) {
+        return _Read(layerPath, filePath, /* metadataOnly = */ false);
+    }
+
+    // The destination file format cannot parse content encoded by a different
+    // source file format. Read a fresh anonymous source layer using the source
+    // format, then transfer only its scene description into this layer so this
+    // layer keeps its identifier and file format.
+    SdfLayerRefPtr sourceLayer = OpenAsAnonymous(layerPath);
+    if (!sourceLayer) {
+        return false;
+    }
+
+    TransferContent(sourceLayer);
+    return true;
 }
 
 bool
