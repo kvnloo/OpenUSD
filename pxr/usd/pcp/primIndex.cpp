@@ -902,7 +902,8 @@ struct Task {
     }
 
     // Stream insertion operator for debugging.
-    friend std::ostream &operator<<(std::ostream &os, Task const &task) {
+    [[maybe_unused]] friend std::ostream &operator<<(
+        std::ostream &os, Task const &task) {
         unsigned char buf[sizeof(PcpNodeRef)] = { 0 };
         memcpy(buf, &task.node, sizeof(task.node));
         std::string bytes;
