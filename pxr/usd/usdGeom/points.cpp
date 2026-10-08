@@ -199,10 +199,12 @@ UsdGeomPoints::SetWidthsInterpolation(TfToken const &interpolation)
 
 static bool
 _ComputeExtent(const VtVec3fArray& points, const VtFloatArray& widths,
-    const GfMatrix4d* transform, VtVec3fArray* extent)
+    const GfMatrix4d* transform, VtVec3fArray* extent,
+    const bool widthsAreConstant = false)
 {
-    // Check for Valid Widths/Points Attributes Size 
-    if (points.size() != widths.size()) {
+    // Check for Valid Widths/Points Attributes Size.
+    if ((widthsAreConstant && widths.size() != 1) ||
+        (!widthsAreConstant && points.size() != widths.size())) {
         return false;
     }
 
@@ -214,7 +216,8 @@ _ComputeExtent(const VtVec3fArray& points, const VtFloatArray& widths,
     TfIterator<const VtFloatArray> widthsItr(widths);
     TF_FOR_ALL(pointsItr, points) {
 
-        float halfWidth = (*widthsItr) * 0.5;
+        const float halfWidth =
+            (widthsAreConstant ? widths[0] : *widthsItr) * 0.5;
 
         if (transform) {
             // Union bbox with min and max of transformed sphere extents.
@@ -241,7 +244,9 @@ _ComputeExtent(const VtVec3fArray& points, const VtFloatArray& widths,
             bbox.UnionWith(*pointsItr - widthVec);
         }
 
-        widthsItr++;
+        if (!widthsAreConstant) {
+            widthsItr++;
+        }
     }
 
     (*extent)[0] = GfVec3f(bbox.GetMin());
@@ -291,10 +296,15 @@ _ComputeExtentForPoints(
         }
     }
     
+    const bool widthsAreConstant =
+        pointsSchema.GetWidthsInterpolation() == UsdGeomTokens->constant;
+
     if (transform) {
-        return UsdGeomPoints::ComputeExtent(points, widths, *transform, extent);
+        return _ComputeExtent(
+            points, widths, transform, extent, widthsAreConstant);
     } else {
-        return UsdGeomPoints::ComputeExtent(points, widths, extent);
+        return _ComputeExtent(
+            points, widths, nullptr, extent, widthsAreConstant);
     }
 }
 
