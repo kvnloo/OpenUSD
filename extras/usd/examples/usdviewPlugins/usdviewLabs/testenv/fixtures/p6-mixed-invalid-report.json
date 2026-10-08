@@ -1,0 +1,38 @@
+{
+  "measurement": {
+    "duplicate_events": [],
+    "incomplete_sessions": [],
+    "invalid_records": [],
+    "invalid_sessions": [
+      {
+        "reasons": [
+          "invalid_elapsed_time"
+        ],
+        "session_id": "invalid-b"
+      }
+    ],
+    "ok": false
+  },
+  "safety": {
+    "evidence": {},
+    "ok": true,
+    "violations": []
+  },
+  "sessions": 1,
+  "summary": {
+    "select-prim:palette": {
+      "n": 1,
+      "steps": {
+        "max": 2,
+        "p50": 2,
+        "p95": 2
+      },
+      "success_rate": 1.0,
+      "time_to_result_s": {
+        "max": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    }
+  }
+}
