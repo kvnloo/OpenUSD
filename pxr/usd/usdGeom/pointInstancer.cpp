@@ -759,6 +759,11 @@ UsdGeomPointInstancer::ComputeInstanceTransformsAtTime(
 {
     TRACE_FUNCTION();
 
+    if (!xforms) {
+        TF_CODING_ERROR("'xforms' is null");
+        return false;
+    }
+
     std::vector<VtArray<GfMatrix4d>> xformsArray;
     std::vector<UsdTimeCode> times({time});
     if (!ComputeInstanceTransformsAtTimes(&xformsArray,
@@ -924,6 +929,11 @@ UsdGeomPointInstancer::ComputeInstanceTransformsAtTimes(
     const ProtoXformInclusion doProtoXforms,
     const MaskApplication applyMask) const
 {
+    if (!xformsArray) {
+        TF_CODING_ERROR("'xformsArray' is null");
+        return false;
+    }
+
     UsdAttribute orientationsAttr;
     if (UsesOrientationsf(&orientationsAttr)){
         return _DoComputeInstanceTransformsAtTimes<GfQuatf>(
