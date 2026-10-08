@@ -35,6 +35,35 @@ class TestUsdGeomExtentFromPlugins(unittest.TestCase):
             e = UsdGeom.Boundable.ComputeExtentFromPlugins(b, tc)
             self.assertEqual(extents[primpath], e)
 
+    def test_PointsConstantWidths(self):
+        stage = Usd.Stage.CreateInMemory()
+
+        constantPoints = UsdGeom.Points.Define(stage, "/constant")
+        self.assertTrue(constantPoints.GetPointsAttr().Set(
+            [(0, 0, 0), (10, 0, 0)]))
+        self.assertTrue(constantPoints.GetWidthsAttr().Set([5]))
+        self.assertTrue(constantPoints.SetWidthsInterpolation(
+            UsdGeom.Tokens.constant))
+
+        vertexPoints = UsdGeom.Points.Define(stage, "/vertex")
+        self.assertTrue(vertexPoints.GetPointsAttr().Set(
+            [(0, 0, 0), (10, 0, 0)]))
+        self.assertTrue(vertexPoints.GetWidthsAttr().Set([5, 5]))
+        self.assertTrue(vertexPoints.SetWidthsInterpolation(
+            UsdGeom.Tokens.vertex))
+
+        expected = Vt.Vec3fArray(
+            [Gf.Vec3f(-2.5, -2.5, -2.5),
+             Gf.Vec3f(12.5, 2.5, 2.5)])
+
+        constantExtent = UsdGeom.Boundable(
+            constantPoints.GetPrim()).ComputeExtent(Usd.TimeCode.Default())
+        vertexExtent = UsdGeom.Boundable(
+            vertexPoints.GetPrim()).ComputeExtent(Usd.TimeCode.Default())
+
+        self.assertEqual(constantExtent, expected)
+        self.assertEqual(constantExtent, vertexExtent)
+
     def test_TimeSampled(self):
         extents = {
             '/capsule' :  Vt.Vec3fArray(2, (Gf.Vec3f(-4.0, -4.0, -6.0),
