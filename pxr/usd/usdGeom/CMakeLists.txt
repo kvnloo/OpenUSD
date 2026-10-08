@@ -81,6 +81,15 @@ pxr_test_scripts(
     testenv/testUsdGeomXformCommonAPI.py
 )
 
+pxr_build_test(testUsdGeomPointInstancerNullOutput
+    LIBRARIES
+        tf
+        usd
+        usdGeom
+    CPPFILES
+        testenv/testUsdGeomPointInstancerNullOutput.cpp
+)
+
 pxr_build_test(testUsdGeomXformCache
     LIBRARIES
         usd
@@ -219,6 +228,11 @@ endif()
 pxr_register_test(testUsdGeomPrimvar
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdGeomPrimvar"
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testUsdGeomPointInstancerNullOutput
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdGeomPointInstancerNullOutput"
     EXPECTED_RETURN_CODE 0
 )
 
