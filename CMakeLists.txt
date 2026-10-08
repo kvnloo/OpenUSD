@@ -24,11 +24,19 @@ include(Packages)
 
 # This has to be defined after Packages is included, because it relies on the
 # discovered path to the python executable.
-set(PXR_PYTHON_SHEBANG "${PYTHON_EXECUTABLE}" 
-    CACHE 
+set(PXR_PYTHON_SHEBANG "${PYTHON_EXECUTABLE}"
+    CACHE
     STRING
     "Replacement path for Python #! line."
 )
+
+# An empty cache override drops an argument from the shebang substitution
+# command. Historically, that made shebang.py silently select its unrelated
+# Windows-wrapper mode and produce malformed Python tools on non-Windows builds.
+if (PXR_ENABLE_PYTHON_SUPPORT AND NOT PXR_PYTHON_SHEBANG)
+    message(FATAL_ERROR
+        "PXR_PYTHON_SHEBANG must not be empty when Python support is enabled.")
+endif()
 
 # CXXDefaults will set a variety of variables for the project.
 # Consume them here. This is an effort to keep the most common
@@ -69,6 +77,6 @@ if (PXR_BUILD_DOCUMENTATION)
     if (PXR_BUILD_PYTHON_DOCUMENTATION)
         pxr_build_python_documentation()
     endif()
-endif()   
+endif()
 
 pxr_toplevel_epilogue()
