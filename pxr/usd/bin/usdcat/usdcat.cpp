@@ -34,6 +34,7 @@ struct Args {
     std::vector<std::string> inputFiles;
     std::string output;
     std::string usdFormat;
+    std::vector<std::string> fileFormatArgs;
     std::string mask;
     bool loadOnly = false;
     bool flatten = false;
@@ -62,6 +63,14 @@ static void Configure(CLI::App *app, Args &args) {
         "environment variable is another way to achieve this.")
         ->check(CLI::IsMember({"usda", "usdc"}, CLI::ignore_case))
         ->option_text("usda|usdc");
+
+    app->add_option(
+        "--fileFormatArg", args.fileFormatArgs,
+        "Pass a file format argument when opening input files.\n"
+        "Specify key=value; this option may be repeated.")
+        ->expected(1)
+        ->take_all()
+        ->option_text("key=value");
 
     app->add_flag(
         "-l,--loadOnly", args.loadOnly,
@@ -120,6 +129,17 @@ static void Quarantine(const std::string &filepath) {
 }
 
 static int UsdCat(const Args &args) {
+    SdfLayer::FileFormatArguments inputFormatArgs;
+    for (const std::string& fileFormatArg : args.fileFormatArgs) {
+        const size_t separator = fileFormatArg.find('=');
+        if (separator == std::string::npos || separator == 0) {
+            std::cerr << "error: --fileFormatArg must be specified as key=value\n";
+            return 1;
+        }
+        inputFormatArgs[fileFormatArg.substr(0, separator)] =
+            fileFormatArg.substr(separator + 1);
+    }
+
     // If --out was specified, it must either not exist or must be writable, the
     // extension must correspond to a known Sdf file format, and we must have
     // exactly one input file.
@@ -197,7 +217,7 @@ static int UsdCat(const Args &args) {
         if (args.flatten) {
             // create context layer for stage opening
             SdfLayerRefPtr ctxLayer;
-            ctxLayer = SdfLayer::FindOrOpen(input);
+            ctxLayer = SdfLayer::FindOrOpen(input, inputFormatArgs);
 
             if (args.mask.empty()) {
                 stage = UsdStage::Open(ctxLayer, context);
@@ -212,21 +232,23 @@ static int UsdCat(const Args &args) {
         } else if (args.flattenLayerStack) {
             // create context layer for stage opening
             SdfLayerRefPtr ctxLayer;
-            ctxLayer = SdfLayer::FindOrOpen(input);
+            ctxLayer = SdfLayer::FindOrOpen(input, inputFormatArgs);
 
             stage = UsdStage::Open(ctxLayer, context, UsdStage::LoadNone);
             if (stage) {
                 layer = UsdUtilsFlattenLayerStack(stage);
             }
         } else if (args.layerMetadata) {
+            const std::string inputIdentifier = inputFormatArgs.empty() ?
+                input : SdfLayer::CreateIdentifier(input, inputFormatArgs);
             auto srcLayer = SdfLayer::OpenAsAnonymous(
-                input, /* metadataOnly = */ true);
+                inputIdentifier, /* metadataOnly = */ true);
             // Not all file format plugins support metadata-only parsing.
             // Create a new anonymous layer and copy just the layer metadata.
             layer = SdfLayer::CreateAnonymous(".usda");
             UsdUtilsCopyLayerMetadata(srcLayer, layer);
         } else {
-            layer = SdfLayer::FindOrOpen(input);
+            layer = SdfLayer::FindOrOpen(input, inputFormatArgs);
         }
 
         if (!layer && !stage) {
