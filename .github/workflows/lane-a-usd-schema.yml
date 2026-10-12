@@ -1,5 +1,11 @@
 name: Lane A USD schema gate
 on:
+  push:
+    branches:
+      - lane-a/usd-schema-gate-20261011
+    paths:
+      - 'experiments/lane_a_depth_usd/**'
+      - '.github/workflows/lane-a-usd-schema.yml'
   pull_request:
     paths:
       - 'experiments/lane_a_depth_usd/**'
