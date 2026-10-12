@@ -27,4 +27,4 @@ jobs:
       - name: Require real OpenUSD and reference composition
         env:
           LANE_A_REQUIRE_PXR: '1'
-        run: python -m pytest -q experiments/lane_a_depth_usd/test_schema_gate.py
+        run: python -m pytest -q experiments/lane_a_depth_usd
