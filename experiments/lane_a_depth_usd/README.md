@@ -23,3 +23,11 @@ This self-contained generator is a *source-level derivative*, not a byte-for-byt
 No OpenUSD runtime, renderer, Newton, Isaac Sim, or Gazebo behavior is verified by this PR until a real CI job runs and returns concrete evidence. A green parse would establish scene-schema/reference composition only. Follow-up: import a parsed stage into an actual physics engine and measure first contact.
 
 **Credit:** The depth-image versus XYZ reconstruction discrepancy was originally reported by AlessioLovato in [gazebosim/gz-sensors#614](https://github.com/gazebosim/gz-sensors/issues/614). The corresponding [gz-sensors#664](https://github.com/gazebosim/gz-sensors/pull/664) remains a separate review/CI question. The original Newton CPU observables report [#4612](https://github.com/newton-physics/newton/issues/4612) is by linusvwe, with RoboX2020 volunteering to implement it. This synthetic scene/parser gate is not attributed to either reporter.
+
+## Physics metadata guard (Wave 09)
+
+A real OpenUSD C++/WASM parser accepted all three **syntactically valid but semantically invalid** v4 scene mutations: a misspelled `PhysicsMeshCollisionAPI`, a `float` in place of `bool physics:collisionEnabled`, and an unsupported `physics:approximation = "convexHul"`. Stage parsing is therefore **not proof** that a physics engine will recognize the intended collider.
+
+`physics_schema_preflight.py` narrowly validates this fixture's `CollisionSlab`, `DropSphere` and `PhysicsWorld` against `usd_physics_contract.json`, generated from the **actual** `lib/usd/usdPhysics/resources/usdPhysics/schema.usda` in BuildUSD run 36633495685, artifact 11065708454 (schema SHA256 `86e189bb4eeb853394faee3612ceccfae19e6e5327be0f89215f3fdb1a60df90`).
+
+Local fork-equivalent test results: **6 passed, 1 skipped**, the skip being the required native Python `pxr` parser. Strict mode remains red on hosts without `pxr`; that is intentional, not evidence of parser success. A separate 7/7 verification included re-deriving the pinned contract from the actual archived BuildUSD schema. The guard is **not** a general USD validator, UsdPhysics API-introspection substitute, or physical contact result. The native `pxr` test and Newton/Isaac Sim import remain outstanding.
