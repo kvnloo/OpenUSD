@@ -3,9 +3,12 @@
 Run `python -m pytest -q test_schema_gate.py`. For a required OpenUSD gate,
 set LANE_A_REQUIRE_PXR=1: missing pxr then fails rather than skips.
 """
+import ast
+from collections import Counter
 import math
 import os
 from pathlib import Path
+import re
 
 import pytest
 
@@ -80,6 +83,37 @@ def Xform "World" {{
   }}
 }}
 '''
+
+
+
+def test_closed_collider_has_metric_volume_and_manifold_edges():
+    """Reject malformed collider triangles before trusting USD physics APIs."""
+    src = make_usda().split('def Mesh "CollisionSlab"', 1)[1]
+    vertex_text = re.search(r"point3f\[\] points = \[([^]]*)\]", src)
+    index_text = re.search(r"int\[\] faceVertexIndices = \[([^]]*)\]", src)
+    assert vertex_text is not None and index_text is not None
+    vertices = ast.literal_eval("[" + vertex_text.group(1) + "]")
+    indices = ast.literal_eval("[" + index_text.group(1) + "]")
+    assert len(vertices) == 96 and len(indices) == 188 * 3
+    triangles = list(zip(indices[::3], indices[1::3], indices[2::3]))
+    assert all(len(set(face)) == 3 and all(0 <= i < len(vertices) for i in face)
+               for face in triangles)
+    directed = Counter((a, b) for face in triangles
+                       for a, b in zip(face, face[1:] + face[:1]))
+    undirected = Counter(tuple(sorted(edge)) for edge in directed.elements())
+    assert all(count == 2 for count in undirected.values())
+    assert all(directed[(b, a)] == 1 and count == 1
+               for (a, b), count in directed.items())
+    signed_volume = 0.0
+    for a, b, c in triangles:
+        x0, y0, z0 = vertices[a]
+        x1, y1, z1 = vertices[b]
+        x2, y2, z2 = vertices[c]
+        signed_volume += (x0 * (y1*z2-y2*z1) + x1 * (y2*z0-y0*z2)
+                          + x2 * (y0*z1-y1*z0)) / 6.0
+    assert math.isclose(signed_volume, 0.14583333333333334, abs_tol=1e-9)
+    assert math.isclose(math.sqrt(2 * (1 - 0.1) / 9.81), 0.4283529368781193,
+                        abs_tol=1e-12)
 
 
 def get_pxr():
