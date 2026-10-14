@@ -43,14 +43,16 @@ class GfPlane
 
     /// This constructor sets this to the plane perpendicular to \p normal and
     /// at \p distance units from the origin. The passed-in normal is
-    /// normalized to unit length first.
+    /// normalized to unit length when its length is at least
+    /// \c GF_MIN_VECTOR_LENGTH; a zero normal does not define a plane.
     GfPlane(const GfVec3d &normal, double distanceToOrigin) {
         Set(normal, distanceToOrigin);
     }
 
     /// This constructor sets this to the plane perpendicular to \p normal and
     /// that passes through \p point. The passed-in normal is normalized to
-    /// unit length first.
+    /// unit length when its length is at least \c GF_MIN_VECTOR_LENGTH;
+    /// a zero normal does not define a plane.
     GfPlane(const GfVec3d &normal, const GfVec3d &point) {
         Set(normal, point);
     }
@@ -85,7 +87,8 @@ class GfPlane
 
     /// This constructor sets this to the plane perpendicular to \p normal and
     /// that passes through \p point. The passed-in normal is normalized to
-    /// unit length first.
+    /// unit length when its length is at least \c GF_MIN_VECTOR_LENGTH;
+    /// a zero normal does not define a plane.
     GF_API
     void                Set(const GfVec3d &normal, const GfVec3d &point);
 
@@ -112,7 +115,8 @@ class GfPlane
     GF_API
     void                Set(const GfVec4d &eqn);
 
-    /// Returns the unit-length normal vector of the plane.
+    /// Returns the stored normal vector, which is unit length for a valid
+    /// input normal of length at least \c GF_MIN_VECTOR_LENGTH.
     const GfVec3d &     GetNormal() const {
         return _normal;
     }
