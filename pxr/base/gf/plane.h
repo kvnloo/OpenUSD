@@ -76,7 +76,8 @@ class GfPlane
     ///
     /// This is not the signed result of GetDistance() evaluated at the
     /// origin; that value has the opposite sign. The passed-in normal is
-    /// normalized to unit length first.
+    /// normalized to unit length first, except when its length is smaller
+    /// than \c GF_MIN_VECTOR_LENGTH. A zero normal does not define a plane.
     void                Set(const GfVec3d &normal, double distanceToOrigin) {
         _normal = normal.GetNormalized();
         _distance = distanceToOrigin;
@@ -99,9 +100,15 @@ class GfPlane
 
     /// This method sets this to the plane given by the equation
     /// \p eqn[0] * x + \p eqn[1] * y + \p eqn[2] * z + \p eqn[3] = 0.
-    /// Internally the normalized plane is represented as
-    /// `dot(normal, x) = distance`, so the stored distance is
+    /// For a nonzero input normal, the stored plane is represented as
+    /// `dot(normal, x) = distance`, with stored distance
     /// `-eqn[3] / length(eqn.xyz)`.
+    ///
+    /// A zero input normal does not define a plane; the stored distance
+    /// remains `-eqn[3]` without division. If the input normal's length is
+    /// smaller than \c GF_MIN_VECTOR_LENGTH, normalization does not produce
+    /// a unit normal, and the resulting equation need not be equivalent to
+    /// the input equation.
     GF_API
     void                Set(const GfVec4d &eqn);
 
