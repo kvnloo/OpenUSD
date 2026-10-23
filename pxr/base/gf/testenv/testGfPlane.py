@@ -55,6 +55,54 @@ class TestGfPlane(unittest.TestCase):
             v = eqn[0] * pt[0] + eqn[1] * pt[1] + eqn[2] * pt[2] + eqn[3]
             self.assertTrue(Gf.IsClose(v, 0, 1e-12))
 
+    def test_DistanceSignConvention(self):
+        # The stored distance is a signed coordinate along the unit normal,
+        # while GetDistance(origin) has the opposite sign.
+        p = Gf.Plane(Gf.Vec3d(0, 0, 2), 3)
+        self.assertEqual(p.normal, Gf.Vec3d(0, 0, 1))
+        self.assertEqual(p.distanceFromOrigin, 3)
+        self.assertEqual(p.GetDistance(Gf.Vec3d()), -3)
+        self.assertEqual(p.GetDistance(Gf.Vec3d(0, 0, 3)), 0)
+        self.assertEqual(p.GetEquation(), Gf.Vec4d(0, 0, 1, -3))
+
+        # Confirm the sign convention also holds for negative coordinates,
+        # the normal/point constructor and the equation constructor.
+        p = Gf.Plane(Gf.Vec3d(0, 0, 1), -2)
+        self.assertEqual(p.distanceFromOrigin, -2)
+        self.assertEqual(p.GetDistance(Gf.Vec3d()), 2)
+        self.assertEqual(p.GetDistance(Gf.Vec3d(0, 0, -2)), 0)
+
+        p = Gf.Plane(Gf.Vec3d(0, 0, 2), Gf.Vec3d(0, 0, 3))
+        self.assertEqual(p.distanceFromOrigin, 3)
+        self.assertEqual(p.GetDistance(Gf.Vec3d()), -3)
+
+        p = Gf.Plane(Gf.Vec4d(0, 0, 2, -6))
+        self.assertEqual(p.normal, Gf.Vec3d(0, 0, 1))
+        self.assertEqual(p.distanceFromOrigin, 3)
+        self.assertEqual(p.GetDistance(Gf.Vec3d()), -3)
+
+    def test_DegenerateNormalStorage(self):
+        # GfVec3d::Normalize divides by GF_MIN_VECTOR_LENGTH (1e-10)
+        # when the length is smaller, rather than making a unit normal.
+        small = Gf.Plane(Gf.Vec4d(5e-11, 0, 0, -6))
+        self.assertAlmostEqual(small.normal[0], 0.5)
+        self.assertEqual(small.normal[1], 0)
+        self.assertEqual(small.normal[2], 0)
+        # Set(eqn) divides the stored distance by the original nonzero
+        # normal length, even if the stored normal is not unit length.
+        self.assertTrue(math.isclose(
+            small.distanceFromOrigin, 6 / 5e-11, rel_tol=1e-14))
+        self.assertEqual(small.GetDistance(Gf.Vec3d()), -small.distanceFromOrigin)
+        self.assertNotEqual(
+            small.GetDistance(Gf.Vec3d(6 / 5e-11, 0, 0)), 0)
+
+        # A zero normal cannot define a plane, but Set(eqn) does not
+        # divide the stored distance by zero.
+        zero = Gf.Plane(Gf.Vec4d(0, 0, 0, -6))
+        self.assertEqual(zero.normal, Gf.Vec3d())
+        self.assertEqual(zero.distanceFromOrigin, 6)
+        self.assertEqual(zero.GetDistance(Gf.Vec3d()), -6)
+
     def test_Operators(self):
         p1 = Gf.Plane(Gf.Vec3d(1,1,1), 10)
         p2 = Gf.Plane(Gf.Vec3d(1,1,1), 20)
