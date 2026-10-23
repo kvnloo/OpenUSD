@@ -66,6 +66,10 @@ endif()
 
 if (PXR_BUILD_TESTS)
     pxr_tests_prologue()
+    # Validate the Python shebang configure guard without third-party builds.
+    add_test(NAME testPythonShebangConfigure
+        COMMAND "${CMAKE_COMMAND}" -P
+            "${PROJECT_SOURCE_DIR}/cmake/tests/testPythonShebangConfigure.cmake")
 endif()
 
 if (PXR_BUILD_DOCUMENTATION)
