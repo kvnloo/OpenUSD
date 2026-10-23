@@ -787,6 +787,41 @@ class TestUsdPhysicsParsing(unittest.TestCase):
         self.assertTrue(cube_found)
         self.assertTrue(material_found)
 
+    def test_inherited_collision_material_parse(self):
+        # Physics material resolution must agree with UsdShade regardless
+        # of whether the material binding is local or inherited.
+        for bindingPath in ("/Body/Cube", "/Body", None):
+            with self.subTest(bindingPath=bindingPath):
+                stage = Usd.Stage.CreateInMemory()
+                body = UsdGeom.Xform.Define(stage, "/Body").GetPrim()
+                UsdPhysics.RigidBodyAPI.Apply(body)
+                cube = UsdGeom.Cube.Define(
+                    stage, "/Body/Cube").GetPrim()
+                UsdPhysics.CollisionAPI.Apply(cube)
+
+                rubber = UsdShade.Material.Define(stage, "/Rubber")
+                UsdPhysics.MaterialAPI.Apply(rubber.GetPrim())
+                if bindingPath:
+                    UsdShade.MaterialBindingAPI.Apply(
+                        stage.GetPrimAtPath(bindingPath)).Bind(
+                            rubber,
+                            UsdShade.Tokens.weakerThanDescendants,
+                            "physics")
+
+                resolved, _ = UsdShade.MaterialBindingAPI(
+                    cube).ComputeBoundMaterial("physics")
+                expected = [rubber.GetPath()] if bindingPath else []
+                if bindingPath:
+                    self.assertEqual(resolved.GetPath(), rubber.GetPath())
+                else:
+                    self.assertFalse(resolved)
+
+                parsed = UsdPhysics.UsdPhysicsLoadStageFromPrimRange(
+                    stage, [Sdf.Path("/")])
+                descs = parsed[UsdPhysics.ObjectType.CubeShape][1]
+                self.assertEqual(len(descs), 1)
+                self.assertEqual(list(descs[0].materials), expected)
+
     def test_collision_multi_material_parse(self):
         stage = Usd.Stage.CreateInMemory()
         self.assertTrue(stage)
