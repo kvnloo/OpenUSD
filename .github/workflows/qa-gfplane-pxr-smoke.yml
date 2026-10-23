@@ -1,0 +1,30 @@
+# Fork-only, narrow native-Python smoke. This is NOT a current-source C++ build.
+# Checkout targets an immutable candidate SHA and does not alter its review branch.
+name: Lane 9 GfPlane native Python smoke
+on:
+  push:
+    branches:
+      - qa/gfplane-pxr-smoke-20261023
+permissions:
+  contents: read
+jobs:
+  gfplane-native-python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact PR 48 source snapshot
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 3f4e3561e70472a6f2d5792e8cde80a4171f2b1d
+          persist-credentials: false
+      - name: Set up Python 3.13
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+      - name: Install published OpenUSD Python bindings (not a source build)
+        run: python -m pip install --disable-pip-version-check --only-binary=:all: 'usd-core==26.8'
+      - name: Verify checkout and run exact-source GfPlane regression module
+        run: |
+          test "$(git rev-parse HEAD)" = "3f4e3561e70472a6f2d5792e8cde80a4171f2b1d"
+          python -c "from pxr import Gf; print('native pxr Gf:', Gf.__file__)"
+          python pxr/base/gf/testenv/testGfPlane.py
