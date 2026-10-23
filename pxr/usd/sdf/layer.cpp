@@ -1168,6 +1168,15 @@ SdfLayer::Import(const string &layerPath)
         return false;
     }
 
+    // TransferContent reports an error and returns without copying if the
+    // destination is not editable. Since it returns void, check permission
+    // here so Import cannot report success without importing any content.
+    if (!PermissionToEdit()) {
+        TF_RUNTIME_ERROR("Import of '%s': Permission denied.",
+                         GetDisplayName().c_str());
+        return false;
+    }
+
     TransferContent(sourceLayer);
     return true;
 }
