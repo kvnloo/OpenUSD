@@ -49,6 +49,41 @@ def _prim(source: str, type_name: str, name: str) -> tuple[str, str]:
     return header, source[opening + 1:pos - 1]
 
 
+def _direct_prim_body(body: str) -> str:
+    """Exclude descendants: their authored properties do not belong to a parent."""
+    depth = 0
+    quoted = False
+    escaped = False
+    commented = False
+    direct = []
+    for char in body:
+        if char == "\n":
+            direct.append("\n")
+            commented = False
+            escaped = False
+            continue
+        if commented:
+            direct.append(" ")
+            continue
+        if char == '"' and not escaped:
+            quoted = not quoted
+        if char == "#" and not quoted:
+            commented = True
+            direct.append(" ")
+            continue
+        if not quoted and char in "{}":
+            depth += 1 if char == "{" else -1
+            if depth < 0:
+                raise PhysicsFixtureError("unexpected closing brace in prim")
+            direct.append(" ")
+            continue
+        direct.append(char if depth == 0 else " ")
+        escaped = quoted and char == "\\" and not escaped
+    if depth:
+        raise PhysicsFixtureError("unclosed nested prim body")
+    return "".join(direct)
+
+
 def validate_fixture(source: str, contract: dict) -> dict:
     """Validate only our three known authored physics prims against a pinned schema."""
     if not contract.get("source", {}).get("sha256"):
@@ -61,7 +96,7 @@ def validate_fixture(source: str, contract: dict) -> dict:
         if applied != spec["apis"]:
             raise PhysicsFixtureError(f"{name}: expected applied APIs {sorted(spec['apis'])}; got {sorted(applied)}")
         actual = {}
-        for attr_type, key, value in ATTR_RE.findall(body):
+        for attr_type, key, value in ATTR_RE.findall(_direct_prim_body(body)):
             if key in actual:
                 raise PhysicsFixtureError(f"{name}: duplicated {key}")
             actual[key] = (attr_type, value.strip())
