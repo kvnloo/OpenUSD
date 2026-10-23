@@ -266,21 +266,41 @@ class TestUsdStageCache(unittest.TestCase):
                 assert not cache1.Contains(newStage3)
                 assert cache1.Size() == 1
 
-        # OpenMasked() always creates a fresh stage and must not consult or
-        # populate active stage caches.
+        # All four layer-based OpenMasked overloads create fresh stages and
+        # must neither read from nor populate any active writable stage cache.
         cache1.Clear()
+        cache2.Clear()
         maskedRoot = Sdf.Layer.CreateAnonymous()
+        maskedSession = Sdf.Layer.CreateAnonymous()
+        mask = Usd.StagePopulationMask.All()
+        resolverContext = Ar.GetResolver().CreateDefaultContext()
+        maskedArgs = [
+            (maskedRoot, mask),
+            (maskedRoot, maskedSession, mask),
+            (maskedRoot, resolverContext, mask),
+            (maskedRoot, maskedSession, resolverContext, mask),
+        ]
         with Usd.StageCacheContext(cache1):
-            maskedStage = Usd.Stage.OpenMasked(
-                maskedRoot, Usd.StagePopulationMask.All())
-            assert maskedStage
-            assert cache1.IsEmpty()
+            with Usd.StageCacheContext(cache2):
+                maskedStages = []
+                for args in maskedArgs:
+                    maskedStage = Usd.Stage.OpenMasked(*args)
+                    assert maskedStage
+                    maskedStages.append(maskedStage)
+                    assert cache1.IsEmpty()
+                    assert cache2.IsEmpty()
 
-            ordinaryStage = Usd.Stage.Open(maskedRoot)
-            assert ordinaryStage
-            assert ordinaryStage is not maskedStage
-            assert cache1.Contains(ordinaryStage)
-            assert not cache1.Contains(maskedStage)
+                assert len(set(id(stage) for stage in maskedStages)) == 4
+
+                # Ordinary Open still publishes into every writable cache.
+                ordinaryStage = Usd.Stage.Open(maskedRoot)
+                assert ordinaryStage
+                assert cache1.Contains(ordinaryStage)
+                assert cache2.Contains(ordinaryStage)
+                for maskedStage in maskedStages:
+                    assert ordinaryStage is not maskedStage
+                    assert not cache1.Contains(maskedStage)
+                    assert not cache2.Contains(maskedStage)
 
         # Try blocking cache writes only.
         cache1.Clear()
