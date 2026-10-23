@@ -203,7 +203,7 @@ _ComputeExtent(const VtVec3fArray& points, const VtFloatArray& widths,
     const bool widthsAreConstant = false)
 {
     // Check for Valid Widths/Points Attributes Size.
-    if ((widthsAreConstant && widths.size() != 1) ||
+    if ((widthsAreConstant && (points.empty() || widths.size() != 1)) ||
         (!widthsAreConstant && points.size() != widths.size())) {
         return false;
     }

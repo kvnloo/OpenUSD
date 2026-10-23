@@ -103,6 +103,24 @@ class TestUsdGeomExtentFromPlugins(unittest.TestCase):
                 self.assertIsNone(UsdGeom.Boundable(
                     points.GetPrim()).ComputeExtent(Usd.TimeCode.Default()))
 
+    def test_PointsEmptyConstantWidths(self):
+        # A single constant width cannot describe an empty point set.
+        # Before constant-width support, this mismatched cardinality failed.
+        stage = Usd.Stage.CreateInMemory()
+        points = UsdGeom.Points.Define(stage, "/emptyConstant")
+        self.assertTrue(points.GetPointsAttr().Set(Vt.Vec3fArray(0)))
+        self.assertTrue(points.GetWidthsAttr().Set([5.0]))
+        self.assertTrue(points.SetWidthsInterpolation(
+            UsdGeom.Tokens.constant))
+
+        boundable = UsdGeom.Boundable(points.GetPrim())
+        self.assertIsNone(boundable.ComputeExtent(Usd.TimeCode.Default()))
+
+        transform = Gf.Matrix4d(1.0)
+        transform.SetScale(Gf.Vec3d(2.0, 3.0, 4.0))
+        self.assertIsNone(UsdGeom.Boundable.ComputeExtentFromPlugins(
+            boundable, Usd.TimeCode.Default(), transform))
+
     def test_PointsConstantWidthsTimeSamples(self):
         stage = Usd.Stage.CreateInMemory()
         points = UsdGeom.Points.Define(stage, "/timeSampledPoints")
