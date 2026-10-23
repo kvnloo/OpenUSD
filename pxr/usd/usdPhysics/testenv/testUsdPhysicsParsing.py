@@ -320,6 +320,28 @@ class TestUsdPhysicsParsing(unittest.TestCase):
         self.assertAlmostEqual(desc.spherePoints[0].radius, 2.0)
         self.assertAlmostEqual(desc.spherePoints[1].radius, 2.0)
 
+        # A constant width does not make a zero-point collider valid.
+        # Cover both supported width authoring paths.
+        for use_primvar in (False, True):
+            stage = Usd.Stage.CreateInMemory()
+            UsdPhysics.Scene.Define(stage, '/physicsScene')
+            shape = UsdGeom.Points.Define(stage, "/points")
+            UsdPhysics.CollisionAPI.Apply(shape.GetPrim())
+            shape.GetPointsAttr().Set([])
+            if use_primvar:
+                widths_pv = UsdGeom.PrimvarsAPI(shape.GetPrim()).CreatePrimvar(
+                    "widths", Sdf.ValueTypeNames.FloatArray,
+                    UsdGeom.Tokens.constant)
+                widths_pv.Set([4.0])
+            else:
+                shape.GetWidthsAttr().Set([4.0])
+                shape.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+
+            desc = parse_sphere_points(stage)
+            self.assertIsNotNone(desc)
+            self.assertFalse(desc.isValid)
+            self.assertEqual(len(desc.spherePoints), 0)
+
         # only primvars:widths authored
         stage = Usd.Stage.CreateInMemory()
         UsdPhysics.Scene.Define(stage, '/physicsScene')
