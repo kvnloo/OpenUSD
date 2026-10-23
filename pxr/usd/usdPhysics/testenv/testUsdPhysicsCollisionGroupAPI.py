@@ -135,6 +135,37 @@ class TestUsdPhysicsCollisionGroupAPI(unittest.TestCase):
         self.assertTrue(table.IsCollisionEnabled(c, c));
         self.validate_table_symmetry(table)
 
+    def test_collision_group_merged_index_order(self):
+        # Regression for a merged group whose shared index is smaller
+        # than the index of an earlier prim in the traversal.
+        # A and D are one collision group; A excludes C, not B.
+        for order in ("ABCD", "ADBC", "DCBA", "BADC", "CADB"):
+            with self.subTest(order=order):
+                stage = Usd.Stage.CreateInMemory()
+                groups = {
+                    name: UsdPhysics.CollisionGroup.Define(stage, "/" + name)
+                    for name in order
+                }
+                groups["A"].CreateMergeGroupNameAttr().Set("wheels")
+                groups["D"].CreateMergeGroupNameAttr().Set("wheels")
+                groups["A"].CreateFilteredGroupsRel().AddTarget(
+                    groups["C"].GetPath())
+
+                table = UsdPhysics.CollisionGroup.ComputeCollisionGroupTable(
+                    stage)
+                self.assertEqual(len(table.GetGroups()), 4)
+                self.assertFalse(table.IsCollisionEnabled(
+                    groups["A"], groups["C"]))
+                self.assertFalse(table.IsCollisionEnabled(
+                    groups["D"], groups["C"]))
+                self.assertTrue(table.IsCollisionEnabled(
+                    groups["D"], groups["B"]))
+                self.assertTrue(table.IsCollisionEnabled(
+                    groups["B"], groups["C"]))
+                self.assertTrue(table.IsCollisionEnabled(
+                    groups["A"], groups["D"]))
+                self.validate_table_symmetry(table)
+
     def test_collision_group_complex_merging(self):
         stage = Usd.Stage.CreateInMemory()
         self.assertTrue(stage)

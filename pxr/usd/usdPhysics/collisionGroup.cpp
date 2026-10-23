@@ -373,8 +373,13 @@ UsdPhysicsCollisionGroup::ComputeCollisionGroupTable(const UsdStage& stage)
                 primPathToIndex[allSceneGroups[iA].GetPath()];
             const unsigned int groupBId = 
                 primPathToIndex[allSceneGroups[iB].GetPath()];
+            // Merged groups share an index, which need not follow the
+            // order of their prims. The packed upper-triangle lookup
+            // requires its two group indices in ascending order.
+            const unsigned int minGroupId = std::min(groupAId, groupBId);
+            const unsigned int maxGroupId = std::max(groupAId, groupBId);
             const unsigned int mergedTableIndex =
-                _GetCollisionTableIndex(groupAId, groupBId, nextPrimId);
+                _GetCollisionTableIndex(minGroupId, maxGroupId, nextPrimId);
             bool enabledInMergeTable = mergedTable[mergedTableIndex];
 
             // And use that to populate the output table:
