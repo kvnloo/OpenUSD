@@ -1605,7 +1605,8 @@ private:
                       const SdfLayerRefPtr &sessionLayer,
                       const ArResolverContext &pathResolverContext,
                       const UsdStagePopulationMask &mask,
-                      InitialLoadSet load);
+                      InitialLoadSet load,
+                      bool publishToCaches);
 
     // --------------------------------------------------------------------- //
     // Spec Existence & Definition Helpers
