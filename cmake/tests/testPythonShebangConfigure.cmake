@@ -60,7 +60,7 @@ function(_check _name _enabled _override _python _expect_success _expected_cache
         endif()
     endif()
     message(STATUS "${_name}: PASS")
-endfunction)
+endfunction()
 
 _check(enabled_empty ON "" "${CMAKE_COMMAND}" FALSE "")
 _check(enabled_override ON "/custom/python3" "${CMAKE_COMMAND}" TRUE "/custom/python3")
