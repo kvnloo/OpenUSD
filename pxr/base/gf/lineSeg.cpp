@@ -93,14 +93,44 @@ GfFindClosestPoints( const GfLineSeg &seg1, const GfLineSeg &seg2,
 	return false;
 
     lt1 = GfClamp( lt1 / seg1._length, 0, 1 );
-    
     lt2 = GfClamp( lt2 / seg2._length, 0, 1 );
 
+    cp1 = seg1.GetPoint(lt1);
+    cp2 = seg2.GetPoint(lt2);
+    double minDistanceSq = (cp1 - cp2).GetLengthSq();
+
+    // Clamping the two infinite-line parameters independently need not
+    // minimize distance between finite segments. A constrained minimum is
+    // either interior to both segments or on an endpoint of at least one.
+    auto consider = [&](double candidateT1, double candidateT2) {
+        const GfVec3d candidate1 = seg1.GetPoint(candidateT1);
+        const GfVec3d candidate2 = seg2.GetPoint(candidateT2);
+        const double distanceSq = (candidate1 - candidate2).GetLengthSq();
+        if (distanceSq < minDistanceSq) {
+            minDistanceSq = distanceSq;
+            lt1 = candidateT1;
+            lt2 = candidateT2;
+            cp1 = candidate1;
+            cp2 = candidate2;
+        }
+    };
+
+    for (int endpoint = 0; endpoint != 2; ++endpoint) {
+        const double t = static_cast<double>(endpoint);
+        double otherT;
+
+        seg2.FindClosestPoint(seg1.GetPoint(t), &otherT);
+        consider(t, otherT);
+
+        seg1.FindClosestPoint(seg2.GetPoint(t), &otherT);
+        consider(otherT, t);
+    }
+
     if ( p1 )
-	*p1 = seg1.GetPoint( lt1 );
+	*p1 = cp1;
 
     if ( p2 )
-	*p2 = seg2.GetPoint( lt2 );
+	*p2 = cp2;
 
     if ( t1 )
 	*t1 = lt1;
