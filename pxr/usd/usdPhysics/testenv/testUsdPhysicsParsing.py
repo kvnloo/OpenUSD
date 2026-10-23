@@ -513,35 +513,60 @@ class TestUsdPhysicsParsing(unittest.TestCase):
         self.assertTrue(cube_found)
 
     def test_cube_reflected_scale_parse(self):
-        def parse_cube(scale):
+        # A reflection may appear as negative components on every axis after
+        # GfTransform factorization. Collision dimensions must be unsigned.
+        def parse_cube(scale, size=2.0, parent_scale=None):
             stage = Usd.Stage.CreateInMemory()
             UsdPhysics.Scene.Define(stage, '/physicsScene')
 
-            cube = UsdGeom.Cube.Define(stage, "/cube")
-            cube.GetSizeAttr().Set(2.0)
+            cube_path = "/cube"
+            if parent_scale is not None:
+                parent = UsdGeom.Xform.Define(stage, "/parent")
+                parent.AddScaleOp().Set(Gf.Vec3f(*parent_scale))
+                cube_path = "/parent/cube"
+
+            cube = UsdGeom.Cube.Define(stage, cube_path)
+            cube.GetSizeAttr().Set(size)
             cube.AddScaleOp().Set(Gf.Vec3f(*scale))
             UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
 
             ret_dict = UsdPhysics.UsdPhysicsLoadStageFromPrimRange(
                 stage, ["/"])
             prim_paths, descs = ret_dict[UsdPhysics.ObjectType.CubeShape]
+            self.assertEqual(len(prim_paths), 1)
+            self.assertEqual(prim_paths[0], cube.GetPrim().GetPrimPath())
             self.assertEqual(len(descs), 1)
+            self.assertTrue(descs[0].isValid)
             return descs[0]
 
-        positive = parse_cube((2.0, 3.0, 4.0))
-        reflected = parse_cube((-2.0, 3.0, 4.0))
-        fully_reflected = parse_cube((-2.0, -3.0, -4.0))
+        # Cover all eight scale-sign octants, not just the one- and three-axis
+        # reflections from the original reproducer.
+        for sx in (-1.0, 1.0):
+            for sy in (-1.0, 1.0):
+                for sz in (-1.0, 1.0):
+                    scale = (2.0 * sx, 3.0 * sy, 4.0 * sz)
+                    with self.subTest(scale=scale):
+                        desc = parse_cube(scale)
+                        self.assertTrue(Gf.IsClose(
+                            desc.halfExtents, Gf.Vec3f(2.0, 3.0, 4.0),
+                            toleranceEpsilon))
 
-        expected = Gf.Vec3f(2.0, 3.0, 4.0)
-        self.assertTrue(Gf.IsClose(
-            positive.halfExtents, expected, toleranceEpsilon))
-        self.assertTrue(Gf.IsClose(
-            reflected.halfExtents, expected, toleranceEpsilon))
-        self.assertTrue(Gf.IsClose(
-            fully_reflected.halfExtents, expected, toleranceEpsilon))
-        self.assertTrue(positive.isValid)
-        self.assertTrue(reflected.isValid)
-        self.assertTrue(fully_reflected.isValid)
+        # Check that removing reflection sign did not lose the independent
+        # authored cube-size factor (the original size=2 control hid this).
+        with self.subTest(case="non-default cube size"):
+            desc = parse_cube((-2.0, 3.0, 4.0), size=3.0)
+            self.assertTrue(Gf.IsClose(
+                desc.halfExtents, Gf.Vec3f(3.0, 4.5, 6.0),
+                toleranceEpsilon))
+
+        # The parser consumes local-to-world transforms. Reflective ancestor
+        # scaling must not leak a negative dimension into the child collider.
+        with self.subTest(case="reflected parent"):
+            desc = parse_cube(
+                (2.0, 3.0, 4.0), parent_scale=(-1.0, 1.0, 1.0))
+            self.assertTrue(Gf.IsClose(
+                desc.halfExtents, Gf.Vec3f(2.0, 3.0, 4.0),
+                toleranceEpsilon))
 
     def test_rigidbody_disabled_nested_body_collision_parse(self):
         """A nested rigid body only owns colliders while it is enabled. A
