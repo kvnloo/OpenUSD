@@ -50,6 +50,33 @@ class UxBenchTest(unittest.TestCase):
             rows[0]["time_to_result_s"],
             1.25)
 
+    def test_pair_sessions_deduplicates_replayed_receipts(self):
+        module = _load()
+        records = [
+            {"event": "ux_bench_start", "session_id": "a",
+             "workflow": "inspect", "mode": "palette", "ts_unix": 10.0},
+            {"event": "ux_bench_start", "session_id": "a",
+             "workflow": "inspect", "mode": "palette", "ts_unix": 10.5},
+            {"event": "ux_bench_start", "session_id": "b",
+             "workflow": "inspect", "mode": "stock", "ts_unix": 20.0},
+            {"event": "ux_bench_finish", "session_id": "a",
+             "success": True, "steps": 2, "ts_unix": 11.25},
+            {"event": "ux_bench_finish", "session_id": "a",
+             "success": False, "steps": 20, "ts_unix": 99.0},
+            {"event": "ux_bench_finish", "session_id": "b",
+             "success": True, "steps": 3, "ts_unix": 21.0},
+            {"event": "ux_bench_start", "session_id": "a",
+             "workflow": "inspect", "mode": "palette", "ts_unix": 10.0},
+            {"event": "ux_bench_finish", "session_id": "a",
+             "success": True, "steps": 2, "ts_unix": 11.25},
+        ]
+        rows = module.pair_sessions(records)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([row["session_id"] for row in rows], ["a", "b"])
+        self.assertEqual(rows[0]["time_to_result_s"], 1.25)
+        self.assertEqual(rows[0]["steps"], 2)
+        self.assertEqual(rows[1]["time_to_result_s"], 1.0)
+
     def test_build_trial_plan_has_100_paired_trials(self):
         module = _load()
         workflows = [

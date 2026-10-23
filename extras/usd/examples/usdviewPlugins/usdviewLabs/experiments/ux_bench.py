@@ -82,6 +82,7 @@ def load_workflows(path):
 def pair_sessions(records):
     starts = {}
     sessions = []
+    completed = set()
 
     for record in records:
         event = record.get("event")
@@ -89,14 +90,18 @@ def pair_sessions(records):
         if not sessionId:
             continue
 
+        sessionId = str(sessionId)
+        if sessionId in completed:
+            continue
+
         if event == EVENT_START:
-            starts[str(sessionId)] = record
+            starts.setdefault(sessionId, record)
             continue
 
         if event != EVENT_FINISH:
             continue
 
-        start = starts.get(str(sessionId))
+        start = starts.pop(sessionId, None)
         if start is None:
             continue
 
@@ -105,7 +110,7 @@ def pair_sessions(records):
             float(start.get("ts_unix", 0.0)))
 
         sessions.append({
-            "session_id": str(sessionId),
+            "session_id": sessionId,
             "workflow": start.get("workflow"),
             "mode": start.get("mode"),
             "success": bool(record.get("success")),
@@ -114,6 +119,7 @@ def pair_sessions(records):
             "start": start,
             "finish": record,
         })
+        completed.add(sessionId)
 
     return sessions
 
