@@ -829,13 +829,15 @@ bool _ParseSpherePointsShapeDesc(const UsdPhysicsCollisionAPI& collisionAPI,
                 widthsInterpolation = shape.GetWidthsInterpolation();
             }
 
-            // A width cannot describe a sphere collision without points.
+            // Constant interpolation requires exactly one shared width;
+            // other interpolations require one width per point.
             const bool constantWidth =
+                widthsInterpolation == UsdGeomTokens->constant;
+            const bool validWidths =
                 !positions.empty() &&
-                widthsInterpolation == UsdGeomTokens->constant &&
-                widths.size() == 1;
-            if (widths.size() &&
-                (constantWidth || positions.size() == widths.size()))
+                (constantWidth ? widths.size() == 1 :
+                                 widths.size() == positions.size());
+            if (validWidths)
             {
                 float sphereScale = 1.0f;
                 {
