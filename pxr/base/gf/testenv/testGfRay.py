@@ -93,6 +93,29 @@ class TestGfRay(unittest.TestCase):
                     Gf.FindClosestPoints(r, l)
         self.assertFalse(intersects)
 
+    def test_ConstrainedRaySegmentClosestPoints(self):
+        # A ray's infinite line intersects the segment's infinite line
+        # behind the origin. The segment point must be reprojected after
+        # clamping the ray rather than kept from the infinite-line answer.
+        ray = Gf.Ray(Gf.Vec3d(0, 0, 0), Gf.Vec3d(2, 0, 0))
+        seg = Gf.LineSeg(Gf.Vec3d(-3, 1, 0), Gf.Vec3d(-1, 3, 0))
+        ok, rayPt, segPt, rayT, segT = Gf.FindClosestPoints(ray, seg)
+        self.assertTrue(ok)
+        self.assertEqual(rayPt, ray.startPoint)
+        self.assertTrue(Gf.IsClose(segPt, Gf.Vec3d(-2, 2, 0), 1e-8))
+        self.assertAlmostEqual(rayT, 0.0)
+        self.assertAlmostEqual(segT, 0.5)
+
+        # An optimal point in front of the ray should remain unchanged;
+        # rayT is relative to its non-unit direction, unlike line distance.
+        front = Gf.LineSeg(Gf.Vec3d(1, 2, 0), Gf.Vec3d(2, 3, 0))
+        ok, rayPt, segPt, rayT, segT = Gf.FindClosestPoints(ray, front)
+        self.assertTrue(ok)
+        self.assertTrue(Gf.IsClose(rayPt, Gf.Vec3d(1, 0, 0), 1e-8))
+        self.assertEqual(segPt, Gf.Vec3d(1, 2, 0))
+        self.assertAlmostEqual(rayT, 0.5)
+        self.assertAlmostEqual(segT, 0.0)
+
     def test_Equality(self):
         r = Gf.Ray()
         r.SetPointAndDirection(Gf.Vec3d(1,2,3), Gf.Vec3d(2,3,4))
