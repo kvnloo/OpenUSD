@@ -56,7 +56,7 @@ function(_check _name _enabled _override _python _expect_success _expected_cache
     else()
         if(_result STREQUAL "0" OR
            NOT _log MATCHES "PXR_PYTHON_SHEBANG must not be empty")
-            message(FATAL_ERROR "${__name} should reject an empty shebang:\n${_log}")
+            message(FATAL_ERROR "${_name} should reject an empty shebang:\n${_log}")
         endif()
     endif()
     message(STATUS "${_name}: PASS")
