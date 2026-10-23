@@ -35,17 +35,33 @@ class TestUsdPhysicsRejectedCollisionMass(unittest.TestCase):
         info.volume = 1.0
         info.inertia = Gf.Matrix3f(1.0 / 6.0)
         info.centerOfMass = Gf.Vec3f(0.0)
-        info.localPos = Gf.Vec3f(0.0)
+        # Give the supported collider a nonzero offset so the test also
+        # exercises center-of-mass aggregation, not just scalar mass.
+        info.localPos = Gf.Vec3f(2.0, -1.0, 0.5)
         info.localRot = Gf.Quatf(1.0)
         return info
 
     def test_rejected_colliders_are_not_aggregated(self):
-        stage = Usd.Stage.CreateInMemory()
-        rigid_body = self._define_body(stage, ["Good", "Rejected"])
+        # A valid collider by itself establishes the expected mass, inertia,
+        # and nonzero center of mass. Rejected colliders must not change any
+        # of these outputs, regardless of traversal order.
+        baseline_stage = Usd.Stage.CreateInMemory()
+        baseline_body = self._define_body(baseline_stage, ["Good"])
+        baseline_mass, baseline_inertia, baseline_com, _ = (
+            baseline_body.ComputeMassProperties(self._mass_information))
+        self.assertAlmostEqual(baseline_mass, 2.0)
+        self.assertFalse(Gf.IsClose(baseline_com, Gf.Vec3f(0.0), 1e-5))
 
-        mass, _, _, _ = rigid_body.ComputeMassProperties(
-            self._mass_information)
-        self.assertAlmostEqual(mass, 2.0)
+        for names in (["Good", "Rejected"], ["Rejected", "Good"]):
+            with self.subTest(collision_order=names):
+                stage = Usd.Stage.CreateInMemory()
+                rigid_body = self._define_body(stage, names)
+                mass, inertia, com, _ = rigid_body.ComputeMassProperties(
+                    self._mass_information)
+
+                self.assertAlmostEqual(mass, baseline_mass)
+                self.assertTrue(Gf.IsClose(inertia, baseline_inertia, 1e-5))
+                self.assertTrue(Gf.IsClose(com, baseline_com, 1e-5))
 
     def test_all_rejected_preserves_invalid_mass_sentinel(self):
         stage = Usd.Stage.CreateInMemory()
