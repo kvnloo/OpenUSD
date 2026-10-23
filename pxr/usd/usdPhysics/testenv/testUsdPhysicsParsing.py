@@ -879,6 +879,41 @@ class TestUsdPhysicsParsing(unittest.TestCase):
         self.assertTrue(num_materials == 2)
 
     # joints
+    def test_independent_joint_limits(self):
+        # The two revolute bounds and the spherical cone axes are
+        # independently optional; one finite bound is still a limit.
+        cases = (
+            ("PrismaticJoint", {"LowerLimit": -30}, True),
+            ("RevoluteJoint", {}, False),
+            ("RevoluteJoint", {"LowerLimit": -30}, True),
+            ("RevoluteJoint", {"UpperLimit": 45}, True),
+            ("RevoluteJoint", {"LowerLimit": -30, "UpperLimit": 45}, True),
+            ("SphericalJoint", {}, False),
+            ("SphericalJoint", {"ConeAngle0Limit": 30}, True),
+            ("SphericalJoint", {"ConeAngle1Limit": 45}, True),
+            ("SphericalJoint", {
+                "ConeAngle0Limit": 30, "ConeAngle1Limit": 45}, True),
+        )
+        for jointType, bounds, expectedEnabled in cases:
+            with self.subTest(jointType=jointType, bounds=bounds):
+                stage = Usd.Stage.CreateInMemory()
+                for name in ("A", "B"):
+                    body = UsdGeom.Xform.Define(stage, "/" + name)
+                    UsdPhysics.RigidBodyAPI.Apply(body.GetPrim())
+
+                joint = getattr(UsdPhysics, jointType).Define(
+                    stage, "/Joint")
+                joint.CreateBody0Rel().SetTargets(["/A"])
+                joint.CreateBody1Rel().SetTargets(["/B"])
+                for name, value in bounds.items():
+                    getattr(joint, "Create" + name + "Attr")(value)
+
+                parsed = UsdPhysics.UsdPhysicsLoadStageFromPrimRange(
+                    stage, [Sdf.Path("/")])
+                descs = parsed[getattr(UsdPhysics.ObjectType, jointType)][1]
+                self.assertEqual(len(descs), 1)
+                self.assertEqual(descs[0].limit.enabled, expectedEnabled)
+
     def test_joint_parse(self):
         stage = Usd.Stage.CreateInMemory()
         self.assertTrue(stage)
