@@ -41,6 +41,7 @@
 #include "pxr/base/trace/trace.h"
 #include "pxr/base/tf/debug.h"
 #include "pxr/base/tf/envSetting.h"
+#include "pxr/base/tf/errorMark.h"
 #include "pxr/base/tf/fileUtils.h"
 #include "pxr/base/tf/iterator.h"
 #include "pxr/base/tf/mallocTag.h"
@@ -1177,8 +1178,12 @@ SdfLayer::Import(const string &layerPath)
         return false;
     }
 
+    // TransferContent returns void but may emit errors when copying between
+    // different schemas (for example, for unrecognized fields). Do not report
+    // a fully successful import if the transfer rejected some of the content.
+    TfErrorMark transferErrors;
     TransferContent(sourceLayer);
-    return true;
+    return transferErrors.IsClean();
 }
 
 bool

@@ -59,7 +59,11 @@ _TestReadOnlyCrossFormatImport(
 
     // Permission can be restored and the same cross-format import succeeds.
     destinationLayer->SetPermissionToEdit(true);
-    TF_AXIOM(destinationLayer->Import(sourcePath));
+    {
+        TfErrorMark mark;
+        TF_AXIOM(destinationLayer->Import(sourcePath));
+        TF_AXIOM(mark.IsClean());
+    }
     TF_AXIOM(destinationLayer->GetComment() == "source");
     TF_AXIOM(destinationLayer->GetPrimAtPath(SdfPath("/ImportedRoot")));
     TF_AXIOM(destinationLayer->GetIdentifier() == originalIdentifier);
