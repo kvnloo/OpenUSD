@@ -813,6 +813,7 @@ bool _ParseSpherePointsShapeDesc(const UsdPhysicsCollisionAPI& collisionAPI,
             VtArray<GfVec3f> positions;
             shape.GetPointsAttr().Get(&positions);
 
+            TfToken widthsInterpolation;
             const UsdGeomPrimvarsAPI primvarsAPI(usdPrim);
             const UsdGeomPrimvar widthsPrimvar =
                 primvarsAPI.GetPrimvar(UsdGeomTokens->widths);
@@ -820,13 +821,23 @@ bool _ParseSpherePointsShapeDesc(const UsdPhysicsCollisionAPI& collisionAPI,
             if (widthsPrimvar && widthsPrimvar.HasAuthoredValue())
             {
                 widthsPrimvar.ComputeFlattened(&widths);
+                widthsInterpolation = widthsPrimvar.GetInterpolation();
             }
             else
             {
                 shape.GetWidthsAttr().Get(&widths);
+                widthsInterpolation = shape.GetWidthsInterpolation();
             }
 
-            if (widths.size() && positions.size() == widths.size())
+            // Constant interpolation requires exactly one shared width;
+            // other interpolations require one width per point.
+            const bool constantWidth =
+                widthsInterpolation == UsdGeomTokens->constant;
+            const bool validWidths =
+                !positions.empty() &&
+                (constantWidth ? widths.size() == 1 :
+                                 widths.size() == positions.size());
+            if (validWidths)
             {
                 float sphereScale = 1.0f;
                 {
@@ -842,7 +853,8 @@ bool _ParseSpherePointsShapeDesc(const UsdPhysicsCollisionAPI& collisionAPI,
                 for (size_t i = 0; i < scount; i++)
                 {
                     outSpherePointsShapeDesc->spherePoints[i].radius =
-                        sphereScale * widths[i] * 0.5f;
+                        sphereScale *
+                        (constantWidth ? widths[0] : widths[i]) * 0.5f;
                     outSpherePointsShapeDesc->spherePoints[i].center =
                         positions[i];
                 }
