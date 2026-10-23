@@ -1428,10 +1428,11 @@ bool _ParseRevoluteJointDesc(const UsdPhysicsRevoluteJoint& revoluteJoint,
 
         revoluteJoint.GetLowerLimitAttr().Get(&outRevoluteJointDesc->limit.lower);
         revoluteJoint.GetUpperLimitAttr().Get(&outRevoluteJointDesc->limit.upper);
-        if (isfinite(outRevoluteJointDesc->limit.lower) &&
-            isfinite(outRevoluteJointDesc->limit.upper)
-            && outRevoluteJointDesc->limit.lower > -usdPhysicsSentinelLimit &&
-            outRevoluteJointDesc->limit.upper < usdPhysicsSentinelLimit)
+        // Each authored finite bound can limit motion independently.
+        if ((isfinite(outRevoluteJointDesc->limit.lower) &&
+            outRevoluteJointDesc->limit.lower > -usdPhysicsSentinelLimit) ||
+            (isfinite(outRevoluteJointDesc->limit.upper) &&
+            outRevoluteJointDesc->limit.upper < usdPhysicsSentinelLimit))
         {
             outRevoluteJointDesc->limit.enabled = true;
         }
@@ -1543,10 +1544,11 @@ bool _ParseSphericalJointDesc(const UsdPhysicsSphericalJoint& sphericalJoint,
         sphericalJoint.GetConeAngle1LimitAttr().Get(
             &outSphericalJointDesc->limit.angle1);
 
-        if (isfinite(outSphericalJointDesc->limit.angle0) &&
-            isfinite(outSphericalJointDesc->limit.angle1) &&
-            outSphericalJointDesc->limit.angle0 >= 0.0 &&
-            outSphericalJointDesc->limit.angle1 >= 0.0)
+        // A negative cone angle disables only that axis of the limit.
+        if ((isfinite(outSphericalJointDesc->limit.angle0) &&
+            outSphericalJointDesc->limit.angle0 >= 0.0) ||
+            (isfinite(outSphericalJointDesc->limit.angle1) &&
+            outSphericalJointDesc->limit.angle1 >= 0.0))
         {
             outSphericalJointDesc->limit.enabled = true;
         }
