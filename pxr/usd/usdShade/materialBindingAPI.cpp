@@ -872,6 +872,24 @@ UsdShadeMaterialBindingAPI::ComputeBoundMaterials(
         bindingRels->resize(prims.size());
     }
 
+    UsdStageWeakPtr stage;
+    for (const UsdPrim& prim : prims) {
+        if (!prim) {
+            continue;
+        }
+
+        const UsdStageWeakPtr primStage = prim.GetStage();
+        if (!stage) {
+            stage = primStage;
+        }
+        else if (primStage != stage) {
+            TF_CODING_ERROR(
+                "ComputeBoundMaterials requires all valid prims to belong "
+                "to the same UsdStage.");
+            return materials;
+        }
+    }
+
     // This ensures that bindings are only computed once per prim.
     BindingsCache bindingsCache;
 

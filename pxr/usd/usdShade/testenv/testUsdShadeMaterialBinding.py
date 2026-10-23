@@ -5,10 +5,31 @@
 # Licensed under the terms set forth in the LICENSE.txt file available at
 # https://openusd.org/license.
 
-from pxr import Sdf, Usd, UsdShade
+from pxr import Sdf, Tf, Usd, UsdGeom, UsdShade
 import unittest    
 
 class TestUsdShadeMaterialBinding(unittest.TestCase): 
+
+    def test_ComputeBoundMaterialsRejectsMixedStages(self):
+        stages = []
+        prims = []
+
+        for materialName in ("Red", "Blue"):
+            stage = Usd.Stage.CreateInMemory()
+            prim = UsdGeom.Cube.Define(stage, "/Object").GetPrim()
+            material = UsdShade.Material.Define(
+                stage, "/" + materialName)
+            UsdShade.MaterialBindingAPI.Apply(prim).Bind(material)
+            stages.append(stage)
+            prims.append(prim)
+
+        self.assertEqual(
+            [UsdShade.MaterialBindingAPI(p).ComputeBoundMaterial()[0].GetPath()
+             for p in prims],
+            [Sdf.Path("/Red"), Sdf.Path("/Blue")])
+
+        with self.assertRaises(Tf.ErrorException):
+            UsdShade.MaterialBindingAPI.ComputeBoundMaterials(prims)
 
     def test_DirectBindingMultiRef(self):
         s = Usd.Stage.CreateInMemory()

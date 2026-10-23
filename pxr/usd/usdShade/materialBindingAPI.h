@@ -829,6 +829,9 @@ public:
     /// The size of the returned vector always matches the size of the input 
     /// vector, \p prims. If a prim is not bound to any material, an invalid 
     /// or empty UsdShadeMaterial is returned at the index corresponding to it.
+    ///
+    /// All valid prims in \p prims must belong to the same UsdStage. Passing
+    /// prims from multiple stages is a coding error.
     /// 
     /// If the pointer \p bindingRels points to a valid vector, then it is 
     /// populated with the set of all "winning" binding relationships.
