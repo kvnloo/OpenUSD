@@ -205,16 +205,13 @@ SdfPath _GetMaterialBinding(const UsdPrim& usdPrim)
     SdfPath materialPath = SdfPath();
 
     const static TfToken physicsPurpose("physics");
-    UsdShadeMaterialBindingAPI materialBindingAPI = 
-        UsdShadeMaterialBindingAPI(usdPrim);
-    if (materialBindingAPI)
+    // Resolve inherited bindings even if MaterialBindingAPI was not
+    // applied directly to the collider. Binding resolution searches ancestors.
+    UsdShadeMaterial material =
+        UsdShadeMaterialBindingAPI(usdPrim).ComputeBoundMaterial(physicsPurpose);
+    if (material)
     {
-        UsdShadeMaterial material = 
-            materialBindingAPI.ComputeBoundMaterial(physicsPurpose);
-        if (material)
-        {
-            materialPath = material.GetPrim().GetPrimPath();
-        }
+        materialPath = material.GetPrim().GetPrimPath();
     }
 
     return materialPath;
