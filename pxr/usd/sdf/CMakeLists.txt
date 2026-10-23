@@ -346,6 +346,15 @@ pxr_build_test(testSdfIntegerCoding
         testenv/testSdfIntegerCoding.cpp
 )
 
+pxr_build_test(testSdfLayerImport
+    LIBRARIES
+        arch
+        sdf
+        tf
+    CPPFILES
+        testenv/testSdfLayerImport.cpp
+)
+
 pxr_build_test(testSdfLayerHints
     LIBRARIES
         sdf
@@ -589,6 +598,10 @@ pxr_register_test(testSdfIntegerCoding
 pxr_register_test(testSdfLayer
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testSdfLayer"
+)
+
+pxr_register_test(testSdfLayerImport
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testSdfLayerImport"
 )
 
 pxr_register_test(testSdfLayerHints

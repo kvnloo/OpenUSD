@@ -41,6 +41,7 @@
 #include "pxr/base/trace/trace.h"
 #include "pxr/base/tf/debug.h"
 #include "pxr/base/tf/envSetting.h"
+#include "pxr/base/tf/errorMark.h"
 #include "pxr/base/tf/fileUtils.h"
 #include "pxr/base/tf/iterator.h"
 #include "pxr/base/tf/mallocTag.h"
@@ -1149,7 +1150,40 @@ SdfLayer::Import(const string &layerPath)
         return false;
     }
 
-    return _Read(layerPath, filePath, /* metadataOnly = */ false);
+    const SdfFileFormatConstPtr sourceFormat =
+        SdfFileFormat::FindByExtension(filePath.GetPathString());
+
+    // Preserve the existing direct-read path when the source resolves to
+    // the same file format as this layer. This avoids an extra temporary
+    // layer and retains the file format's normal incremental update behavior.
+    if (!sourceFormat || sourceFormat == GetFileFormat()) {
+        return _Read(layerPath, filePath, /* metadataOnly = */ false);
+    }
+
+    // The destination file format cannot parse content encoded by a different
+    // source file format. Read a fresh anonymous source layer using the source
+    // format, then transfer only its scene description into this layer so this
+    // layer keeps its identifier and file format.
+    SdfLayerRefPtr sourceLayer = OpenAsAnonymous(layerPath);
+    if (!sourceLayer) {
+        return false;
+    }
+
+    // TransferContent reports an error and returns without copying if the
+    // destination is not editable. Since it returns void, check permission
+    // here so Import cannot report success without importing any content.
+    if (!PermissionToEdit()) {
+        TF_RUNTIME_ERROR("Import of '%s': Permission denied.",
+                         GetDisplayName().c_str());
+        return false;
+    }
+
+    // TransferContent returns void but may emit errors when copying between
+    // different schemas (for example, for unrecognized fields). Do not report
+    // a fully successful import if the transfer rejected some of the content.
+    TfErrorMark transferErrors;
+    TransferContent(sourceLayer);
+    return transferErrors.IsClean();
 }
 
 bool
