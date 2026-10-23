@@ -122,7 +122,14 @@ GfFindClosestPoints(const GfRay &ray, const GfLineSeg &seg,
     if (!GfFindClosestPoints(l, seg, &rp, &sp, &rd, &sd))
 	return false;
 
-    if (rd < 0.0) rd = 0.0;
+    // If the unconstrained closest point is behind the ray's origin,
+    // the constrained optimum is the ray's origin and the nearest point
+    // on the segment. Clamping the ray parameter alone leaves the segment
+    // point paired with the wrong ray point.
+    if (rd < 0.0) {
+        rd = 0.0;
+        sp = seg.FindClosestPoint(ray._startPoint, &sd);
+    }
 
     if (rayPoint)
 	*rayPoint = l.GetPoint(rd);
