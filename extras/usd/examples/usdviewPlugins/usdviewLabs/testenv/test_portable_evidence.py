@@ -313,6 +313,159 @@ class PortableEvidenceTest(unittest.TestCase):
         )
         self.assertEqual(receipt["outcome"], "fail")
 
+    def test_native_safety_abstentions_are_not_passes(self):
+        for key in ("stale_accept_blocked", "stale_or_cancelled_final_dropped"):
+            with self.subTest(key=key):
+                receipt = self.module.normalize(
+                    {
+                        "sessions": 2,
+                        "safety": {
+                            "ok": True,
+                            "violations": [],
+                            "evidence": {key: 1},
+                        },
+                    },
+                    self.sha,
+                    [{"name": "Linux", "conclusion": "success"}],
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "abstain")
+                self.assertEqual(receipt["invariants"][0]["result"], "pass")
+                decisions = [
+                    item for item in receipt["evidence"]
+                    if item["id"] == "labs-safety-abstention"
+                ]
+                self.assertEqual(decisions[0]["result"], "unknown")
+                self.assertEqual(decisions[0]["details"][key], 1)
+
+    def test_real_safety_failure_dominates_abstention(self):
+        receipt = self.module.normalize(
+            {
+                "sessions": 1,
+                "safety": {
+                    "ok": False,
+                    "violations": [{"type": "jev_shadow_executed"}],
+                    "evidence": {"stale_accept_blocked": 1},
+                },
+            },
+            self.sha,
+        )
+        self.assertEqual(receipt["outcome"], "fail")
+
+    def test_malformed_safety_counters_do_not_pass(self):
+        for count in (True, -1, "2", [], None):
+            with self.subTest(count=count):
+                receipt = self.module.normalize(
+                    {
+                        "sessions": 1,
+                        "safety": {
+                            "ok": True,
+                            "violations": [],
+                            "evidence": {"stale_accept_blocked": count},
+                        },
+                    },
+                    self.sha,
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+
+    def test_missing_buildusd_job_list_is_unknown(self):
+        report = {"sessions": 1, "safety": {"ok": True, "violations": []}}
+        for jobs in (None, [], {"Linux": "success"}, "success"):
+            with self.subTest(jobs=jobs):
+                receipt = self.module.normalize(
+                    report, self.sha, jobs, workflow_conclusion="success"
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+                self.assertTrue(any(
+                    item["id"] == "buildusd-job-list"
+                    and item["result"] == "unknown"
+                    for item in receipt["evidence"]
+                ))
+
+    def test_malformed_job_does_not_disappear(self):
+        for malformed in (None, 1, "Linux", ["list"]):
+            with self.subTest(malformed=malformed):
+                receipt = self.module.normalize(
+                    None, self.sha,
+                    [{"name": "Windows", "conclusion": "success"}, malformed],
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+                self.assertEqual(receipt["evidence"][-1]["result"], "unknown")
+
+    def test_workflow_only_requires_conclusion_and_required_jobs(self):
+        jobs = [
+            {"name": "Linux", "conclusion": "success"},
+            {"name": "GPUTests", "conclusion": "skipped", "required": False},
+        ]
+        successful = self.module.normalize(
+            None, self.sha, jobs, workflow_conclusion="success"
+        )
+        self.assertEqual(successful["outcome"], "pass")
+        self.assertEqual(successful["subject"], {"kind": "workflow", "id": "BuildUSD"})
+        self.assertEqual(successful["evidence"][-1]["result"], "unknown")
+        self.assertEqual(
+            self.module.normalize(None, self.sha, jobs)["outcome"], "unknown"
+        )
+        optional_only = self.module.normalize(
+            None, self.sha, [jobs[-1]], workflow_conclusion="success"
+        )
+        self.assertEqual(optional_only["outcome"], "unknown")
+
+    def test_non_string_conclusion_is_unknown_not_exception(self):
+        for value in ([], {}, 1, True):
+            with self.subTest(value=value):
+                receipt = self.module.normalize(
+                    None, self.sha,
+                    [{"name": "Linux", "conclusion": value}],
+                    workflow_conclusion="success",
+                )
+                self.assertEqual(receipt["outcome"], "unknown")
+                self.assertEqual(receipt["evidence"][-1]["result"], "unknown")
+
+    def test_real_pr15_buildusd_jobs_normalize_without_labs(self):
+        # Actual run: https://github.com/kvnloo/OpenUSD/actions/runs/36633495685
+        path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "buildusd-pr15-jobs.json"
+        )
+        with open(path, encoding="utf-8") as stream:
+            jobs = json.load(stream)
+        revision = "52546b361dd0d70ef8dda386138f026bd6ff8e5d"
+        receipt = self.module.normalize(
+            None, revision, jobs, workflow_conclusion="success"
+        )
+        self.assertEqual(receipt["outcome"], "pass")
+        self.assertEqual(receipt["producer"]["revision"], revision)
+        self.assertEqual(len([
+            item for item in receipt["evidence"] if item["kind"] == "ci-job"
+        ]), 7)
+        self.assertEqual(receipt["evidence"][-1]["result"], "unknown")
+        self.assertEqual(receipt["evidence"][-1]["details"]["required"], False)
+        self.assertEqual(receipt["evidence"][1]["details"]["job_id"], 109628280217)
+        jobs[5]["conclusion"] = None
+        self.assertEqual(
+            self.module.normalize(
+                None, revision, jobs, workflow_conclusion="success"
+            )["outcome"], "unknown"
+        )
+
+    def test_workflow_only_cli_normalizes_real_fixture(self):
+        import subprocess
+        import sys
+        path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "buildusd-pr15-jobs.json"
+        )
+        command = [
+            sys.executable, os.path.abspath(_PATH),
+            "--revision", "52546b361dd0d70ef8dda386138f026bd6ff8e5d",
+            "--ci-jobs", path,
+            "--workflow-conclusion", "success",
+        ]
+        process = subprocess.run(
+            command, check=True, capture_output=True, text=True
+        )
+        self.assertEqual(json.loads(process.stdout)["outcome"], "pass")
+
     def test_requires_exact_revision(self):
         with self.assertRaises(ValueError):
             self.module.normalize({"sessions": 1}, "dev")
