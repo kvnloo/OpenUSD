@@ -287,6 +287,61 @@ class TestUsdPhysicsParsing(unittest.TestCase):
         self.assertAlmostEqual(desc.spherePoints[0].radius, 2.0)
         self.assertAlmostEqual(desc.spherePoints[1].radius, 3.0)
 
+        # constant widths attr
+        stage = Usd.Stage.CreateInMemory()
+        UsdPhysics.Scene.Define(stage, '/physicsScene')
+        shape = UsdGeom.Points.Define(stage, "/points")
+        UsdPhysics.CollisionAPI.Apply(shape.GetPrim())
+        shape.GetPointsAttr().Set([Gf.Vec3f(1.0), Gf.Vec3f(2.0)])
+        shape.GetWidthsAttr().Set([4.0])
+        shape.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+
+        desc = parse_sphere_points(stage)
+        self.assertTrue(desc.isValid)
+        self.assertEqual(len(desc.spherePoints), 2)
+        self.assertAlmostEqual(desc.spherePoints[0].radius, 2.0)
+        self.assertAlmostEqual(desc.spherePoints[1].radius, 2.0)
+
+        # constant primvars:widths
+        stage = Usd.Stage.CreateInMemory()
+        UsdPhysics.Scene.Define(stage, '/physicsScene')
+        shape = UsdGeom.Points.Define(stage, "/points")
+        UsdPhysics.CollisionAPI.Apply(shape.GetPrim())
+        shape.GetPointsAttr().Set([Gf.Vec3f(1.0), Gf.Vec3f(2.0)])
+        primvarsAPI = UsdGeom.PrimvarsAPI(shape.GetPrim())
+        widthsPv = primvarsAPI.CreatePrimvar(
+            "widths", Sdf.ValueTypeNames.FloatArray,
+            UsdGeom.Tokens.constant)
+        widthsPv.Set([4.0])
+
+        desc = parse_sphere_points(stage)
+        self.assertTrue(desc.isValid)
+        self.assertEqual(len(desc.spherePoints), 2)
+        self.assertAlmostEqual(desc.spherePoints[0].radius, 2.0)
+        self.assertAlmostEqual(desc.spherePoints[1].radius, 2.0)
+
+        # A constant width does not make a zero-point collider valid.
+        # Cover both supported width authoring paths.
+        for use_primvar in (False, True):
+            stage = Usd.Stage.CreateInMemory()
+            UsdPhysics.Scene.Define(stage, '/physicsScene')
+            shape = UsdGeom.Points.Define(stage, "/points")
+            UsdPhysics.CollisionAPI.Apply(shape.GetPrim())
+            shape.GetPointsAttr().Set([])
+            if use_primvar:
+                widths_pv = UsdGeom.PrimvarsAPI(shape.GetPrim()).CreatePrimvar(
+                    "widths", Sdf.ValueTypeNames.FloatArray,
+                    UsdGeom.Tokens.constant)
+                widths_pv.Set([4.0])
+            else:
+                shape.GetWidthsAttr().Set([4.0])
+                shape.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+
+            desc = parse_sphere_points(stage)
+            self.assertIsNotNone(desc)
+            self.assertFalse(desc.isValid)
+            self.assertEqual(len(desc.spherePoints), 0)
+
         # only primvars:widths authored
         stage = Usd.Stage.CreateInMemory()
         UsdPhysics.Scene.Define(stage, '/physicsScene')
@@ -348,6 +403,33 @@ class TestUsdPhysicsParsing(unittest.TestCase):
 
         desc = parse_sphere_points(stage)
         self.assertFalse(desc.isValid)
+
+    def test_constant_widths_wrong_cardinality(self):
+        # 'constant' interpolation must not accept per-point arrays, even if
+        # their lengths happen to equal the number of points.
+        for use_primvar in (False, True):
+            with self.subTest(use_primvar=use_primvar):
+                stage = Usd.Stage.CreateInMemory()
+                UsdPhysics.Scene.Define(stage, '/physicsScene')
+                shape = UsdGeom.Points.Define(stage, '/points')
+                UsdPhysics.CollisionAPI.Apply(shape.GetPrim())
+                shape.GetPointsAttr().Set([
+                    Gf.Vec3f(1.0), Gf.Vec3f(2.0)])
+                if use_primvar:
+                    widths = UsdGeom.PrimvarsAPI(shape.GetPrim()).CreatePrimvar(
+                        'widths', Sdf.ValueTypeNames.FloatArray,
+                        UsdGeom.Tokens.constant)
+                    widths.Set([4.0, 6.0])
+                else:
+                    shape.GetWidthsAttr().Set([4.0, 6.0])
+                    shape.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+                ret_dict = UsdPhysics.UsdPhysicsLoadStageFromPrimRange(
+                    stage, ['/'])
+                paths, descs = ret_dict[UsdPhysics.ObjectType.SpherePointsShape]
+                self.assertEqual(len(descs), 1)
+                self.assertEqual(paths[0], shape.GetPrim().GetPrimPath())
+                self.assertFalse(descs[0].isValid)
+                self.assertEqual(len(descs[0].spherePoints), 0)
 
     def test_rigidbody_parse(self):
         stage = Usd.Stage.CreateInMemory()
