@@ -103,6 +103,39 @@ class TestGfLineSeg(unittest.TestCase):
         self.assertTrue(Gf.IsClose(t1, 0, 0.00001))
         self.assertTrue(Gf.IsClose(t2, 0, 0.00001))
         
+    def test_ConstrainedClosestPoints(self):
+        # The closest infinite-line intersection lies outside both segments.
+        # Clamping both parameters independently returns a nonminimum pair.
+        seg1 = Gf.LineSeg(Gf.Vec3d(0, 0, 0), Gf.Vec3d(2, 0, 0))
+        seg2 = Gf.LineSeg(Gf.Vec3d(-1, -2, 0), Gf.Vec3d(0, -1, 0))
+        ok, p1, p2, t1, t2 = Gf.FindClosestPoints(seg1, seg2)
+        self.assertTrue(ok)
+        self.assertEqual(p1, Gf.Vec3d(0, 0, 0))
+        self.assertEqual(p2, Gf.Vec3d(0, -1, 0))
+        self.assertAlmostEqual(t1, 0.0)
+        self.assertAlmostEqual(t2, 1.0)
+
+        # The answer should not depend on the argument order.
+        ok, p2, p1, t2, t1 = Gf.FindClosestPoints(seg2, seg1)
+        self.assertTrue(ok)
+        self.assertEqual(p1, Gf.Vec3d(0, 0, 0))
+        self.assertEqual(p2, Gf.Vec3d(0, -1, 0))
+        self.assertAlmostEqual(t1, 0.0)
+        self.assertAlmostEqual(t2, 1.0)
+
+        # Keep the unconstrained solution when both parameters are interior.
+        seg3 = Gf.LineSeg(Gf.Vec3d(1, -1, 1), Gf.Vec3d(1, 1, 1))
+        ok, p1, p3, t1, t3 = Gf.FindClosestPoints(seg1, seg3)
+        self.assertTrue(ok)
+        self.assertTrue(Gf.IsClose(p1, Gf.Vec3d(1, 0, 0), 1e-8))
+        self.assertTrue(Gf.IsClose(p3, Gf.Vec3d(1, 0, 1), 1e-8))
+        self.assertAlmostEqual(t1, 0.5)
+        self.assertAlmostEqual(t3, 0.5)
+
+        # Preserve the documented false result for parallel segments.
+        parallel = Gf.LineSeg(Gf.Vec3d(0, 1, 0), Gf.Vec3d(2, 1, 0))
+        self.assertFalse(Gf.FindClosestPoints(seg1, parallel)[0])
+
     def test_Operators(self):
         l1 = Gf.LineSeg(Gf.Vec3d(0, 0, 0), Gf.Vec3d(1, 1, 1))
         l2 = Gf.LineSeg(Gf.Vec3d(0, 0, 0), Gf.Vec3d(1, 1, 1))
