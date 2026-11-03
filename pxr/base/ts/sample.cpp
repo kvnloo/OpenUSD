@@ -7,6 +7,7 @@
 
 #include "pxr/pxr.h"
 #include "pxr/base/ts/iterator.h"
+#include "pxr/base/ts/eval.h"
 #include "pxr/base/ts/sample.h"
 #include "pxr/base/ts/splineData.h"
 #include "pxr/base/ts/regressionPreventer.h"
@@ -896,6 +897,38 @@ Ts_Truncate(
     // or value block.
     resultData->preExtrapolation = preExtrap;
     resultData->postExtrapolation = postExtrap;
+
+    // When a bounded interval lies entirely in linear extrapolation,
+    // baking may retain only the end knot. Linear extrapolation then acts
+    // held because it no longer has two knots from which to find a slope.
+    // Preserve the original derivative while inserting both boundary knots;
+    // the requested fallback extrapolations are restored below.
+    if (minFinite && maxFinite && resultData->times.size() == 1) {
+        const bool inPostExtrap =
+            interval.GetMin() > lastTime && postExtrap.mode == TsExtrapLinear;
+        const bool inPreExtrap =
+            interval.GetMax() < firstTime && preExtrap.mode == TsExtrapLinear;
+
+        if (inPostExtrap || inPreExtrap) {
+            const TsTime atTime =
+                inPostExtrap ? interval.GetMin() : interval.GetMax();
+            const auto slope = Ts_Eval(
+                data, atTime, Ts_EvalDerivative, Ts_EvalAtTime);
+            if (!TF_VERIFY(slope,
+                           "Expected a derivative in linear extrapolation")) {
+                delete resultData;
+                return nullptr;
+            }
+
+            TsExtrapolation sloped(TsExtrapSloped);
+            sloped.slope = *slope;
+            if (inPostExtrap) {
+                resultData->postExtrapolation = sloped;
+            } else {
+                resultData->preExtrapolation = sloped;
+            }
+        }
+    }
 
     // Perform any relevant breakdowns and reduction of knot vectors.
     // 
