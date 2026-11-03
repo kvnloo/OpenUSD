@@ -48,6 +48,7 @@ pxr_library(usdPhysics
 pxr_test_scripts(
     testenv/testUsdPhysicsMetrics.py
     testenv/testUsdPhysicsRigidBodyAPI.py
+    testenv/testUsdPhysicsRejectedCollisionMass.py
     testenv/testUsdPhysicsCollisionGroupAPI.py
     testenv/testUsdPhysicsParsing.py
 )
@@ -61,6 +62,12 @@ pxr_register_test(testUsdPhysicsMetrics
 pxr_register_test(testUsdPhysicsRigidBodyAPI
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdPhysicsRigidBodyAPI"
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testUsdPhysicsRejectedCollisionMass
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdPhysicsRejectedCollisionMass"
     EXPECTED_RETURN_CODE 0
 )
 
