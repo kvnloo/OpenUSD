@@ -366,9 +366,14 @@ _MassApiData _GetCollisionShapeMassAPIData(const UsdPhysicsCollisionAPI& collisi
 
 
 // gather mass information for given collision shape
-UsdPhysicsMassProperties _ParseCollisionShapeForMass(const UsdPrim& prim, 
-    const _MassApiData& inShapeMassInfo, float density, GfMatrix4f* transform, 
-    UsdGeomXformCache* xformCache, const UsdPhysicsRigidBodyAPI::MassInformationFn& massInfoFn)
+bool _ParseCollisionShapeForMass(
+    const UsdPrim& prim,
+    const _MassApiData& inShapeMassInfo,
+    float density,
+    GfMatrix4f* transform,
+    UsdPhysicsMassProperties* outMassProperties,
+    UsdGeomXformCache* xformCache,
+    const UsdPhysicsRigidBodyAPI::MassInformationFn& massInfoFn)
 {
     _MassApiData shapeMassInfo = inShapeMassInfo;        
 
@@ -380,7 +385,7 @@ UsdPhysicsMassProperties _ParseCollisionShapeForMass(const UsdPrim& prim,
             "Provided mass information not valid for a prim %s.",
             prim.GetPrimPath().GetString().c_str());
 
-        return UsdPhysicsMassProperties();
+        return false;
     }
 
     GfMatrix3f inertia = massInfo.inertia;
@@ -445,7 +450,10 @@ UsdPhysicsMassProperties _ParseCollisionShapeForMass(const UsdPrim& prim,
     transform->SetRotateOnly(GfQuatd(massInfo.localRot));
 
     // return final collision mass properties
-    return UsdPhysicsMassProperties(shapeMassInfo.mass, inertia, massInfo.centerOfMass);
+    *outMassProperties =
+        UsdPhysicsMassProperties(
+            shapeMassInfo.mass, inertia, massInfo.centerOfMass);
+    return true;
 }
 
 // compute mass properties for given rigid body
@@ -542,8 +550,19 @@ float UsdPhysicsRigidBodyAPI::ComputeMassProperties(GfVec3f* _diagonalInertia,
                 _GetCollisionShapeMassAPIData(collisionAPI, rigidBodyMassInfo.density, &shapeDensity, physicsMaterials[i]);
 
             GfMatrix4f matrix;
-            massProps.push_back(_ParseCollisionShapeForMass(collisionPrim, _MassApiData, shapeDensity, &matrix, &xfCache, massInfoFn));
-            massTransf.push_back(matrix);
+            UsdPhysicsMassProperties shapeMassProperties;
+            if (_ParseCollisionShapeForMass(
+                    collisionPrim,
+                    _MassApiData,
+                    shapeDensity,
+                    &matrix,
+                    &shapeMassProperties,
+                    &xfCache,
+                    massInfoFn))
+            {
+                massProps.push_back(shapeMassProperties);
+                massTransf.push_back(matrix);
+            }
         }
 
         if (!massProps.empty())
