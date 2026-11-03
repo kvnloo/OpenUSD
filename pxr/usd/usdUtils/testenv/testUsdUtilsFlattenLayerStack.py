@@ -7,7 +7,7 @@
 
 from __future__ import print_function
 
-from pxr import UsdUtils, Sdf, Usd, Ar, Gf, Vt
+from pxr import UsdUtils, Sdf, Usd, Ar, Gf, Vt, Ts
 import os, unittest
 
 class TestUsdUtilsFlattenLayerStack(unittest.TestCase):
@@ -109,6 +109,50 @@ class TestUsdUtilsFlattenLayerStack(unittest.TestCase):
         # Confirm nested variant sets still exist
         self.assertTrue(layer.GetObjectAtPath(
             '/Sphere{vset_1=default}{vset_2=default}ChildFromNestedVariant'))
+
+    def test_SplineAcrossSublayerOffset(self):
+        # The layer offset maps source knot times 0, 10, 20 to 5, 25, 45.
+        anim = Sdf.Layer.CreateAnonymous()
+        anim_stage = Usd.Stage.Open(anim)
+        prim = anim_stage.DefinePrim('/A')
+        samples = prim.CreateAttribute('samples', Sdf.ValueTypeNames.Double)
+        splined = prim.CreateAttribute('splined', Sdf.ValueTypeNames.Double)
+
+        spline = Ts.Spline('double')
+        for time, value in ((0.0, 0.0), (10.0, 10.0), (20.0, 0.0)):
+            samples.Set(value, time)
+            knot = Ts.Knot('double')
+            knot.SetTime(time)
+            knot.SetValue(value)
+            knot.SetNextInterpolation(Ts.InterpLinear)
+            spline.SetKnot(knot)
+        splined.SetSpline(spline)
+
+        shot = Sdf.Layer.CreateAnonymous()
+        shot.subLayerPaths.append(anim.identifier)
+        shot.subLayerOffsets[0] = Sdf.LayerOffset(offset=5, scale=2)
+        source_stage = Usd.Stage.Open(shot)
+        flat_stage = Usd.Stage.Open(UsdUtils.FlattenLayerStack(source_stage))
+
+        # Both forms of animation must keep their values at the retimed knots.
+        for name in ('samples', 'splined'):
+            source_attr = source_stage.GetAttributeAtPath('/A.' + name)
+            flat_attr = flat_stage.GetAttributeAtPath('/A.' + name)
+            for time, expected in ((5.0, 0.0), (25.0, 10.0), (45.0, 0.0)):
+                with self.subTest(attribute=name, time=time):
+                    self.assertEqual(source_attr.Get(time), expected)
+                    self.assertEqual(flat_attr.Get(time), expected)
+                    self.assertEqual(flat_attr.Get(time), source_attr.Get(time))
+
+        # Check the spline between knots too, to catch shifts and scale errors.
+        source_spline_attr = source_stage.GetAttributeAtPath('/A.splined')
+        flat_spline_attr = flat_stage.GetAttributeAtPath('/A.splined')
+        for time, expected in ((15.0, 5.0), (35.0, 5.0)):
+            with self.subTest(attribute='splined', time=time):
+                self.assertEqual(source_spline_attr.Get(time), expected)
+                self.assertEqual(flat_spline_attr.Get(time), expected)
+                self.assertEqual(flat_spline_attr.Get(time),
+                                 source_spline_attr.Get(time))
 
     def test_ClipAssetPaths(self):
         src_stage = Usd.Stage.Open('root.usda')
