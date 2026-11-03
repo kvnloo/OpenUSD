@@ -24,7 +24,7 @@
                     "Test4": {
                         "doc": "validator for testBaseType",
                         "keywords": ["Keyword2"],
-                        "schemaTypes": ["testBaseType"]
+                        "schemaTypes": ["BaseTypeTest"]
                     },
                     "Test5": {
                         "doc": "validator for testDerivedType",
@@ -39,7 +39,7 @@
                     "Test7": {
                         "doc": "validator for testAPISchema",
                         "keywords": ["Keyword1"],
-                        "schemaTypes": ["testAPISchemaAPI"]
+                        "schemaTypes": ["APISchemaTestAPI"]
                     },
                     "TestSuite": {
                         "doc": "A suite of validators for Test1, Test2 and Test3",
