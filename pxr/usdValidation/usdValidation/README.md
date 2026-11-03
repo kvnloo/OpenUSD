@@ -26,6 +26,11 @@ developers.
 * keywords: Keywords associated with this validator.
 * doc: Doc string explaining the purpose of the validator.
 * schemaTypes: The schema types the validator is associated with, if any.
+  Both registered TfType names (such as `UsdGeomCube`) and USD schema
+  identifiers (such as `Cube` or `PhysicsCollisionAPI`) are accepted for
+  typed and applied API schemas. The registry's schema-type metadata queries
+  accept either spelling. Unrecognized names produce a warning when a
+  validation context is constructed, and do not match any prim.
 * isTimeDependent: If the validator is testing rules which are time dependent. 
 * isSuite: If the validator represents a suite of validators.
 
