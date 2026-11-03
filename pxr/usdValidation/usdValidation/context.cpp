@@ -265,17 +265,34 @@ UsdValidationContext::_DistributeValidators(
                 // element is a vector of validators for that schema type.
                 for (const TfToken &schemaType :
                      validator->GetMetadata().schemaTypes) {
+                    // Schema metadata may contain either a TfType name or a
+                    // USD schema identifier. Resolve it before grouping so
+                    // _ShouldRunSchemaTypeValidator receives a TfType name.
+                    const TfType type =
+                        UsdSchemaRegistry::GetTypeFromName(schemaType);
+                    if (type.IsUnknown()) {
+                        TF_WARN("Unknown schema type '%s' for validator '%s'.",
+                                schemaType.GetText(),
+                                validator->GetMetadata().name.GetText());
+                        continue;
+                    }
+                    const TfToken typeName(type.GetTypeName());
                     const auto it = std::find_if(
                         _schemaTypeValidators.begin(),
                         _schemaTypeValidators.end(),
                         [&](const _SchemaTypeValidatorPair &pair) {
-                            return pair.first == schemaType;
+                            return pair.first == typeName;
                         });
                     if (it != _schemaTypeValidators.end()) {
-                        it->second.push_back(validator);
+                        // Aliases for the same type must not run a validator
+                        // twice on the same prim.
+                        if (std::find(it->second.begin(), it->second.end(),
+                                      validator) == it->second.end()) {
+                            it->second.push_back(validator);
+                        }
                     } else {
                         _schemaTypeValidators.emplace_back(
-                            schemaType,
+                            typeName,
                             std::vector<const UsdValidationValidator *> {
                                 validator });
                     }

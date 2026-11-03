@@ -133,6 +133,73 @@ class TestUsdValidationContextPy(unittest.TestCase):
             error.GetSites()[0].GetPrim().GetName(),
             "somePrim")
 
+    def test_SchemaTypeIdentifierMetadata(self):
+        # The validator plugin declares identifiers rather than TfType names.
+        # Querying the registry by either spelling must find each validator.
+        registry = UsdValidation.ValidationRegistry()
+        cases = (
+            ("testBaseType", "BaseTypeTest",
+             "testUsdValidationContextValidatorsPlugin:Test4",
+             {Sdf.Path("/World/baseType"),
+              Sdf.Path("/World/derivedType"),
+              Sdf.Path("/World/nestedDerivedType")}),
+            ("testAPISchemaAPI", "APISchemaTestAPI",
+             "testUsdValidationContextValidatorsPlugin:Test7",
+             {Sdf.Path("/World/somePrim")}),
+        )
+        stage = Usd.Stage.Open(self._CreateTestLayer())
+        self.assertTrue(stage)
+
+        for typeName, identifier, pluginValidatorName, expectedPaths in cases:
+            self.assertEqual(Usd.SchemaRegistry.GetTypeFromName(identifier),
+                             Tf.Type.FindByName(typeName))
+            for lookupName in (typeName, identifier):
+                metadata = registry.GetValidatorMetadataForSchemaType(
+                    lookupName)
+                self.assertIn(pluginValidatorName,
+                              [entry.name for entry in metadata])
+            metadata = registry.GetValidatorMetadataForSchemaTypes(
+                [typeName, identifier])
+            self.assertEqual(
+                sum(entry.name == pluginValidatorName for entry in metadata),
+                1)
+
+            # Explicit registration uses the same matching path as metadata
+            # from plugInfo.json. Cover both spellings and both together:
+            # aliases must not execute one validator twice.
+            for suffix, schemaTypes in (
+                    ("TypeName", [typeName]),
+                    ("Identifier", [identifier]),
+                    ("Both", [typeName, identifier])):
+                name = "testUsdValidationContextPy:" + identifier + suffix
+                validatorMetadata = UsdValidation.ValidatorMetadata(
+                    name=name, doc="Schema name matching regression",
+                    keywords=[name], schemaTypes=schemaTypes)
+
+                def task(prim, timeRange):
+                    return [UsdValidation.ValidationError(
+                        "SchemaNameMatch",
+                        UsdValidation.ValidationErrorType.Error,
+                        [UsdValidation.ValidationErrorSite(
+                            prim.GetStage(), prim.GetPath())],
+                        "Schema validator matched")]
+
+                registry.RegisterPrimValidator(validatorMetadata, task)
+                validator = registry.GetOrLoadValidatorByName(name)
+                self.assertIsNotNone(validator)
+                contexts = (
+                    UsdValidation.ValidationContext([validator]),
+                    UsdValidation.ValidationContext([name], False),
+                    UsdValidation.ValidationContext([name], True),
+                )
+                for context in contexts:
+                    errors = [error for error in context.Validate(stage)
+                              if error.GetValidator().GetMetadata().name == name]
+                    self.assertEqual(len(errors), len(expectedPaths))
+                    self.assertEqual(
+                        {error.GetSites()[0].GetPrim().GetPath()
+                         for error in errors}, expectedPaths)
+
     def test_UsdValidationContext(self):
         # Create a ValidationContext with a suite
         suite = UsdValidation.ValidationRegistry().GetOrLoadValidatorSuiteByName(

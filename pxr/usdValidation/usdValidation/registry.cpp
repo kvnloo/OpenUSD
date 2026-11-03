@@ -13,10 +13,12 @@
 #include "pxr/base/tf/instantiateSingleton.h"
 #include "pxr/base/tf/registryManager.h"
 #include "pxr/base/tf/token.h"
+#include "pxr/usd/usd/schemaRegistry.h"
 
 #include <algorithm>
 #include <memory>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -753,9 +755,44 @@ UsdValidationValidatorMetadataVector
 UsdValidationRegistry::GetValidatorMetadataForSchemaTypes(
     const TfTokenVector &schemaTypes) const
 {
+    // Match both the registered TfType name and the USD schema identifier,
+    // regardless of which spelling was used in validator metadata.
+    TfTokenVector queryNames;
+    std::unordered_set<TfToken, TfToken::HashFunctor> uniqueQueryNames;
+    auto appendName = [&](const TfToken &name) {
+        if (!name.IsEmpty() && uniqueQueryNames.insert(name).second) {
+            queryNames.push_back(name);
+        }
+    };
+    for (const TfToken &schemaType : schemaTypes) {
+        appendName(schemaType);
+        const TfType type = UsdSchemaRegistry::GetTypeFromName(schemaType);
+        if (!type.IsUnknown()) {
+            appendName(TfToken(type.GetTypeName()));
+            appendName(
+                UsdSchemaRegistry::GetInstance().GetSchemaTypeName(type));
+        }
+    }
+
+    UsdValidationValidatorMetadataVector result;
+    std::unordered_set<TfToken, TfToken::HashFunctor> uniqueValidatorNames;
     std::shared_lock lock(_mutex);
-    return _GetValidatorMetadataForToken(_schemaTypeToValidatorNames,
-                                         schemaTypes);
+    for (const TfToken &name : queryNames) {
+        const auto namesIt = _schemaTypeToValidatorNames.find(name);
+        if (namesIt == _schemaTypeToValidatorNames.end()) {
+            continue;
+        }
+        for (const TfToken &validatorName : namesIt->second) {
+            if (!uniqueValidatorNames.insert(validatorName).second) {
+                continue;
+            }
+            const auto metadataIt = _validatorNameToMetadata.find(validatorName);
+            if (TF_VERIFY(metadataIt != _validatorNameToMetadata.end())) {
+                result.push_back(metadataIt->second);
+            }
+        }
+    }
+    return result;
 }
 
 UsdValidationValidatorMetadataVector
