@@ -236,6 +236,26 @@ class TestGfRotation(unittest.TestCase):
         self.assertAlmostEqual(math.radians(r.angle) / radians, 1.0,
                                places=14)
 
+    def test_UnnormalizedQuaternionAtan2Compatibility(self):
+        # Non-unit input is accepted, but the atan2 change no longer clamps
+        # the real component to one before computing the angle.
+        q = Gf.Quatd(2.0, Gf.Vec3d(1.0, 0.0, 0.0))
+        rot = Gf.Rotation(q)
+        self.assertEqual(rot.axis, Gf.Vec3d(1.0, 0.0, 0.0))
+        self.assertAlmostEqual(math.radians(rot.angle),
+                               2.0 * math.atan2(1.0, 2.0), delta=1e-14)
+
+    def test_RotateIntoNearParallelToleranceBoundary(self):
+        # cos(theta) > 0.9999999 returns identity before atan2 is reached.
+        source = Gf.Vec3d(1.0, 0.0, 0.0)
+        for radians, expected in ((1e-4, 0.0), (1e-3, 1e-3)):
+            target = Gf.Vec3d(math.cos(radians), math.sin(radians), 0.0)
+            rot = Gf.Rotation().SetRotateInto(source, target)
+            self.assertAlmostEqual(math.radians(rot.angle), expected,
+                                   delta=1e-14)
+            self.assertEqual(rot.axis, Gf.Vec3d(1.0, 0.0, 0.0)
+                             if expected == 0.0 else Gf.Vec3d(0.0, 0.0, 1.0))
+
     def test_Hash(self):
         rot = Gf.Rotation(Gf.Vec3d(1.0, 0.0, 0.0), 40.0)
         self.assertEqual(hash(rot), hash(rot))
