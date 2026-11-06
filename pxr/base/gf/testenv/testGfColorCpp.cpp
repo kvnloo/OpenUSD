@@ -12,6 +12,7 @@
 #include "../nc/nanocolor.h"
 #include "../colorSpace_data.h"
 #include <iostream>
+#include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -680,6 +681,54 @@ void testSpanConversions() {
     }
 }
 
+// The span receiver is the source, unlike destination-receiver Convert().
+// RGB and RGBA must produce the same RGB values; RGBA must preserve alpha.
+void testSpanSourceTargetRGBRGBAParity()
+{
+    const GfColorSpace rec709(GfColorSpaceNames->LinearRec709);
+    const GfColorSpace ap0(GfColorSpaceNames->LinearAP0);
+    const GfVec3f expectedAp0[] = {
+        GfVec3f(0.337736f, 0.260346f, 0.145521f),
+        GfVec3f(0.434436f, 0.501752f, 0.713343f)
+    };
+    std::vector<float> rgb{
+        0.5f, 0.25f, 0.125f,
+        0.25f, 0.5f, 0.75f
+    };
+    std::vector<float> rgba{
+        0.5f, 0.25f, 0.125f, 0.6f,
+        0.25f, 0.5f, 0.75f, 0.2f
+    };
+    const std::vector<float> originalRGB = rgb;
+
+    rec709.ConvertRGBSpan(ap0, TfSpan<float>(rgb.data(), rgb.size()));
+    rec709.ConvertRGBASpan(ap0, TfSpan<float>(rgba.data(), rgba.size()));
+
+    for (size_t pixel = 0; pixel != 2; ++pixel) {
+        const size_t rgbOffset = 3 * pixel;
+        const size_t rgbaOffset = 4 * pixel;
+        const GfVec3f convertedRGB(
+            rgb[rgbOffset], rgb[rgbOffset + 1], rgb[rgbOffset + 2]);
+        const GfVec3f convertedRGBA(
+            rgba[rgbaOffset], rgba[rgbaOffset + 1], rgba[rgbaOffset + 2]);
+        TF_AXIOM(GfIsClose(convertedRGB, expectedAp0[pixel], 1e-5f));
+        TF_AXIOM(GfIsClose(convertedRGBA, expectedAp0[pixel], 1e-5f));
+        TF_AXIOM(GfIsClose(convertedRGB, convertedRGBA, 1e-6f));
+    }
+    TF_AXIOM(rgba[3] == 0.6f);
+    TF_AXIOM(rgba[7] == 0.2f);
+
+    ap0.ConvertRGBSpan(rec709, TfSpan<float>(rgb.data(), rgb.size()));
+    ap0.ConvertRGBASpan(rec709, TfSpan<float>(rgba.data(), rgba.size()));
+    for (size_t i = 0; i != originalRGB.size(); ++i) {
+        TF_AXIOM(GfIsClose(rgb[i], originalRGB[i], 1e-5f));
+        TF_AXIOM(GfIsClose(
+            rgba[4 * (i / 3) + (i % 3)], originalRGB[i], 1e-5f));
+    }
+    TF_AXIOM(rgba[3] == 0.6f);
+    TF_AXIOM(rgba[7] == 0.2f);
+}
+
 void testKnownColorSpanConversion() {
     GfColorSpace csLinearRec709(GfColorSpaceNames->LinearRec709);
     GfColor linear_rec709_scene(GfVec3f(0.5f, 0.25f, 0.125f), csLinearRec709);
@@ -840,6 +889,7 @@ main(int argc, char *argv[])
     testColorSpaceEqualityIsData();
     testKnownColors();
     testKnownColorSpanConversion();
+    testSpanSourceTargetRGBRGBAParity();
     testSpanConversions();
     testLinRec709ToAP0Matrix();
     testPlanckianLocus();
