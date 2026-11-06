@@ -32,6 +32,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <typeindex>
 #include <variant>
 #include <vector>
 
@@ -224,6 +225,64 @@ TfHashAppend(HashState &h, MultipleThings const &mt)
     h.AppendRange(mt.sfloats.begin(), mt.sfloats.end());
 }
 
+// Exercise the proposed std::optional hashing dispatch using a recording
+// hash state, without relying on implementation-dependent final hash values.
+struct OptionalHashTrace
+{
+    int stringAppends = 0;
+    int typeAppends = 0;
+    std::string value;
+    std::type_index type = std::type_index(typeid(void));
+
+    void Append(const std::string& s) {
+        ++stringAppends;
+        value = s;
+    }
+
+    void Append(const std::type_index& t) {
+        ++typeAppends;
+        type = t;
+    }
+};
+
+static void
+TestOptionalHashContract()
+{
+    const TfHash h;
+
+    // Engaged optionals use the contained string's TfHashAppend path.
+    const std::string xyz("xyz");
+    OptionalHashTrace valued;
+    TfHashAppend(valued, std::optional<std::string>(xyz));
+    TF_AXIOM(valued.stringAppends == 1);
+    TF_AXIOM(valued.typeAppends == 0);
+    TF_AXIOM(valued.value == xyz);
+    TF_AXIOM(h(std::optional<std::string>(xyz)) == h(xyz));
+
+    // Embedded NULs must not truncate the forwarded three-byte string.
+    const std::string binary("a\0b", 3);
+    OptionalHashTrace embeddedNul;
+    TfHashAppend(embeddedNul, std::optional<std::string>(binary));
+    TF_AXIOM(embeddedNul.stringAppends == 1);
+    TF_AXIOM(embeddedNul.typeAppends == 0);
+    TF_AXIOM(embeddedNul.value.size() == 3);
+    TF_AXIOM(embeddedNul.value[1] == '\0');
+    TF_AXIOM(embeddedNul.value == binary);
+    TF_AXIOM(h(std::optional<std::string>(binary)) == h(binary));
+
+    // PR #2815's proposed empty policy appends the contained type identity.
+    // This deliberately shares a hash with that type_index: policy review
+    // remains necessary before any upstream promotion.
+    const std::optional<std::string> absent;
+    OptionalHashTrace empty;
+    TfHashAppend(empty, absent);
+    TF_AXIOM(empty.stringAppends == 0);
+    TF_AXIOM(empty.typeAppends == 1);
+    TF_AXIOM(empty.type == std::type_index(typeid(std::string)));
+    TF_AXIOM(h(absent) ==
+             h(std::type_index(typeid(std::string))));
+}
+
 static bool
 Test_TfHash()
 {
@@ -318,6 +377,8 @@ Test_TfHash()
     printf("hash(optional): %zu\n", h(std::make_optional<std::string>()));
     TF_AXIOM(h(std::make_optional<std::string>()) ==
              h(std::make_optional<std::string>()));
+
+    TestOptionalHashContract();
 
     // Validate support for std::variant
     printf("hash(variant): %zu\n",
