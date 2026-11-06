@@ -216,6 +216,100 @@ class TestSdfZipFile(unittest.TestCase):
         self._ValidateSourceAndZippedFile("src/a.test", zf, utf8Name)
         self._ValidateSourceAndZippedFile("src/a.test", zf, "ascii.test")
 
+    def test_WriterUtf8ReviewInteropAndAlignment(self):
+        output = "test_utf8_review_interop.usdz"
+        names = ("ascii.test", "blåbær/rødgrød.test",
+                 "こんにちは.usd")
+        bits = (0, 0x0800, 0x0800)
+        if os.path.isfile(output):
+            os.remove(output)
+
+        with Sdf.ZipFileWriter.CreateNew(output) as writer:
+            self.assertTrue(writer)
+            for name in names:
+                self.assertEqual(
+                    writer.AddFile("src/a.test", name), name)
+
+        with zipfile.ZipFile(output, "r") as archive:
+            self.assertEqual(archive.namelist(), list(names))
+            self.assertIsNone(archive.testzip())
+            for name, expectedBits in zip(names, bits):
+                self.assertEqual(
+                    archive.getinfo(name).flag_bits, expectedBits)
+                self._ValidateSourceAndZippedFile(
+                    "src/a.test", archive, name)
+
+        usdArchive = Sdf.ZipFile.Open(output)
+        self.assertTrue(usdArchive)
+        self.assertEqual(usdArchive.GetFileNames(), list(names))
+        for name in names:
+            self.assertEqual(
+                usdArchive.GetFileInfo(name).dataOffset % 64, 0)
+            self._ValidateSourceAndZippedFile(
+                "src/a.test", usdArchive, name)
+
+    def test_WriterUtf8ReviewLocalAndCentralFlags(self):
+        output = "test_utf8_review_headers.usdz"
+        names = ("ascii.test", "blåbær/rødgrød.test",
+                 "こんにちは.usd")
+        bits = (0, 0x0800, 0x0800)
+        byteLengths = (10, 23, 19)
+        if os.path.isfile(output):
+            os.remove(output)
+
+        with Sdf.ZipFileWriter.CreateNew(output) as writer:
+            self.assertTrue(writer)
+            for name in names:
+                self.assertEqual(
+                    writer.AddFile("src/a.test", name), name)
+
+        with open(output, "rb") as stream:
+            raw = stream.read()
+        end = raw.rfind(b"PK\x05\x06")
+        self.assertEqual(end, len(raw) - 22)
+        self.assertEqual(
+            int.from_bytes(raw[end + 10:end + 12], "little"),
+            len(names))
+        cursor = int.from_bytes(
+            raw[end + 16:end + 20], "little")
+
+        for name, expectedBits, expectedLength in zip(
+                names, bits, byteLengths):
+            encoded = name.encode("utf-8")
+            self.assertEqual(len(encoded), expectedLength)
+            self.assertEqual(raw[cursor:cursor + 4], b"PK\x01\x02")
+            self.assertEqual(
+                int.from_bytes(raw[cursor + 8:cursor + 10],
+                               "little"),
+                expectedBits)
+            filenameLength = int.from_bytes(
+                raw[cursor + 28:cursor + 30], "little")
+            extraLength = int.from_bytes(
+                raw[cursor + 30:cursor + 32], "little")
+            commentLength = int.from_bytes(
+                raw[cursor + 32:cursor + 34], "little")
+            local = int.from_bytes(
+                raw[cursor + 42:cursor + 46], "little")
+            self.assertEqual(filenameLength, expectedLength)
+            self.assertEqual(
+                raw[cursor + 46:cursor + 46 + filenameLength],
+                encoded)
+            self.assertEqual(raw[local:local + 4], b"PK\x03\x04")
+            self.assertEqual(
+                int.from_bytes(raw[local + 6:local + 8],
+                               "little"),
+                expectedBits)
+            self.assertEqual(
+                int.from_bytes(raw[local + 26:local + 28],
+                               "little"),
+                expectedLength)
+            self.assertEqual(
+                raw[local + 30:local + 30 + expectedLength],
+                encoded)
+            cursor += 46 + filenameLength + extraLength + commentLength
+
+        self.assertEqual(cursor, end)
+
     def test_WriterDiscard(self):
         if os.path.isfile("test_discard.usdz"):
             os.remove("test_discard.usdz")
