@@ -255,3 +255,26 @@ pxr_register_test(testArchVirtualMemory
 pxr_register_test(testArchVsnprintf
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testArchVsnprintf"
 )
+
+# Linux libc compatibility: exercise both key-present and key-absent
+# branches of the real private cache-line detection implementation.
+if(PXR_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    pxr_build_test(testArchCacheLineKeyPresent
+        LIBRARIES
+            arch
+        CPPFILES
+            testenv/testArchCacheLineKeyPresent.cpp
+    )
+    pxr_build_test(testArchCacheLineKeyMissing
+        LIBRARIES
+            arch
+        CPPFILES
+            testenv/testArchCacheLineKeyMissing.cpp
+    )
+    pxr_register_test(testArchCacheLineKeyPresent
+        COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testArchCacheLineKeyPresent"
+    )
+    pxr_register_test(testArchCacheLineKeyMissing
+        COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testArchCacheLineKeyMissing"
+    )
+endif()
