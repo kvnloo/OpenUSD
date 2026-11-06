@@ -177,19 +177,32 @@ public:
     /// \return True if the color spaces are not equal, false otherwise.
     bool operator !=(const GfColorSpace &rh) const { return !(*this == rh); }
 
-    /// Convert in place a packed array of RGB values from one color space to "this" one.
+    /// Convert in place a packed array of RGB values from this color space
+    /// to \p to.
+    ///
+    /// For example, the receiver is the source (Linear Rec.709), and the
+    /// argument is the target (Linear AP0) for both RGB and RGBA:
+    /// \code
+    /// GfColorSpace rec709(GfColorSpaceNames->LinearRec709);
+    /// GfColorSpace ap0(GfColorSpaceNames->LinearAP0);
+    /// float rgb[] = {0.5f, 0.25f, 0.125f};
+    /// rec709.ConvertRGBSpan(ap0, TfSpan<float>(rgb, 3));
+    /// float rgba[] = {0.5f, 0.25f, 0.125f, 0.6f};
+    /// rec709.ConvertRGBASpan(ap0, TfSpan<float>(rgba, 4));
+    /// \endcode
     ///
     /// \param to The target color space.
     /// \param rgb The packed array of RGB values to convert.
     GF_API 
-    void ConvertRGBSpan(const GfColorSpace& srcColorSpace, TfSpan<float> rgb) const;
+    void ConvertRGBSpan(const GfColorSpace& to, TfSpan<float> rgb) const;
 
-    /// Convert in place a packed array of RGBA values from one color space to "this one.
+    /// Convert in place a packed array of RGBA values from this color space
+    /// to \p to. The alpha component of each pixel is preserved.
     ///
     /// \param to The target color space.
     /// \param rgba The packed array of RGBA values to convert.
     GF_API 
-    void ConvertRGBASpan(const GfColorSpace& srcColorSpace, TfSpan<float> rgba) const;
+    void ConvertRGBASpan(const GfColorSpace& to, TfSpan<float> rgba) const;
 
     /// Convert a rgb triplet in a certain color space to "this" color space.
     GF_API
