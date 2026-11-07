@@ -90,6 +90,28 @@ def SetVec( vec, values ):
 
 class TestGfVec(unittest.TestCase):
 
+    def test_vec3d_pickle_protocol_parity(self):
+        import pickle
+        source = Gf.Vec3d(3.0, 4.0, 0.0)
+        for protocol in (0, pickle.HIGHEST_PROTOCOL):
+            with self.subTest(protocol=protocol):
+                actual = pickle.loads(pickle.dumps(source, protocol=protocol))
+                self.assertIsInstance(actual, Gf.Vec3d)
+                self.assertEqual(tuple(actual), (3.0, 4.0, 0.0))
+
+    def test_vec3d_reverse_slice_parity(self):
+        source = Gf.Vec3d(1.0, 2.0, 3.0)
+        self.assertEqual(source[::-1], [3.0, 2.0, 1.0])
+        self.assertEqual(tuple(source), (1.0, 2.0, 3.0))
+
+    def test_vec3d_strided_slice_assignment_parity(self):
+        source = Gf.Vec3d(1.0, 2.0, 3.0)
+        source[::2] = [7.0, 9.0]
+        self.assertEqual(tuple(source), (7.0, 2.0, 9.0))
+        with self.assertRaises(ValueError):
+            source[::2] = [10.0]
+        self.assertEqual(tuple(source), (7.0, 2.0, 9.0))
+
     def ConstructorsTest(self, Vec):
         # no arg constructor
         self.assertIsInstance(Vec(), Vec)
