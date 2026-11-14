@@ -11,11 +11,13 @@
 #include "pxr/base/ts/splineData.h"
 #include "pxr/base/ts/regressionPreventer.h"
 #include "pxr/base/ts/debugCodes.h"
+#include "pxr/base/ts/eval.h"
 #include "pxr/base/gf/math.h"
 #include "pxr/base/tf/diagnostic.h"
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -824,6 +826,51 @@ Ts_Truncate(
     }
     const bool minFinite = interval.IsMinFinite();
     const bool maxFinite = interval.IsMaxFinite();
+
+    // If the interval lies entirely in a non-looping extrapolation region,
+    // the truncated spline is a straight line.  Build it from the values at
+    // the interval ends: the bake below collapses that region to a single
+    // knot and loses the extrapolation slope (#4306).
+    if (minFinite && maxFinite && interval.GetMin() < interval.GetMax() &&
+        !data->HasInnerLoops())
+    {
+        const TsExtrapolation &extrap = interval.GetMin() >= lastTime ?
+            data->postExtrapolation : data->preExtrapolation;
+        const bool outside = interval.GetMin() >= lastTime ||
+            interval.GetMax() <= firstTime;
+        const std::optional<double> valueAtMin = Ts_Eval(
+            data, interval.GetMin(), Ts_EvalValue, Ts_EvalPost);
+        const std::optional<double> valueAtMax = Ts_Eval(
+            data, interval.GetMax(), Ts_EvalValue, Ts_EvalPre);
+
+        if (outside && !extrap.IsLooping() &&
+            extrap.mode != TsExtrapValueBlock && valueAtMin && valueAtMax)
+        {
+            Ts_SplineData* resultData =
+                Ts_SplineData::Create(data->GetValueType(), data);
+            if (resultData == nullptr) {
+                return nullptr;
+            }
+            resultData->loopParams = Ts_LoopParams();
+            resultData->ClearKnots();
+
+            Ts_TypedKnotData<double> kd;
+            kd.time = interval.GetMin();
+            kd.value = *valueAtMin;
+            kd.nextInterp = TsInterpLinear;
+            resultData->SetKnotFromDouble(&kd, VtDictionary());
+            kd = Ts_TypedKnotData<double>();
+            kd.time = interval.GetMax();
+            kd.value = *valueAtMax;
+            resultData->SetKnotFromDouble(&kd, VtDictionary());
+            resultData->UpdateKnotTangentsAtIndex(0);
+            resultData->UpdateKnotTangentsAtIndex(1);
+
+            resultData->preExtrapolation = preFallback;
+            resultData->postExtrapolation = postFallback;
+            return resultData;
+        }
+    }
 
     // Collapse any degenerate looping extrapolation modes to simpler modes.
     TsExtrapolation preExtrap = data->preExtrapolation;

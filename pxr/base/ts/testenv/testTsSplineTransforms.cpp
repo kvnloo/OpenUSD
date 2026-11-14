@@ -381,11 +381,84 @@ TestTruncateSpecificCases()
 }
 
 bool
+TestTruncatePureExtrapolation()
+{
+    // Regression test for OpenUSD issue #4306: truncating a spline to an
+    // interval that lies entirely outside the knot span must preserve the
+    // linear extrapolation slope, so evaluation inside the truncated interval
+    // continues the original spline's extrapolation line.
+    std::string testId = "TestTruncatePureExtrapolation";
+    const std::string splineId = "pureExtrapolation";
+
+    // A slope-1 line through (0,0) and (10,10).
+    TsSpline spline(Ts_GetType<double>());
+    {
+        TsKnot k1(Ts_GetType<double>());
+        TsKnot k2(Ts_GetType<double>());
+        k1.SetTime(0.0);
+        k1.SetValue(0.0);
+        k1.SetNextInterpolation(TsInterpLinear);
+        k2.SetTime(10.0);
+        k2.SetValue(10.0);
+        spline.SetKnots({k1, k2});
+    }
+
+    bool result = true;
+
+    // Post side: interval entirely past the last knot.
+    {
+        spline.SetPreExtrapolation(TsExtrapolation(TsExtrapValueBlock));
+        spline.SetPostExtrapolation(TsExtrapolation(TsExtrapLinear));
+
+        const GfInterval truncInterval(12.0, 20.0, CLOSED, CLOSED);
+        const GfInterval checkInterval(12.0, 19.0, CLOSED, CLOSED);
+        const TsSpline truncated = spline.GetTruncated(truncInterval);
+        if (!VerifySplineEquivalence(testId, splineId, spline, truncated,
+                                     truncInterval, checkInterval, 1e-10)) {
+            result = false;
+        }
+
+        double v = 0.0;
+        if (!(truncated.Eval(15.0, &v) && GfIsClose(v, 15.0, 1e-10))) {
+            std::cerr << testId << ": " << splineId
+                      << ": truncated.Eval(15) = " << v
+                      << ", expected 15.0" << std::endl;
+            result = false;
+        }
+    }
+
+    // Pre side: interval entirely before the first knot.
+    {
+        spline.SetPostExtrapolation(TsExtrapolation(TsExtrapValueBlock));
+        spline.SetPreExtrapolation(TsExtrapolation(TsExtrapLinear));
+
+        const GfInterval truncInterval(-20.0, -12.0, CLOSED, CLOSED);
+        const GfInterval checkInterval(-20.0, -13.0, CLOSED, CLOSED);
+        const TsSpline truncated = spline.GetTruncated(truncInterval);
+        if (!VerifySplineEquivalence(testId, splineId, spline, truncated,
+                                     truncInterval, checkInterval, 1e-10)) {
+            result = false;
+        }
+
+        double v = 0.0;
+        if (!(truncated.Eval(-15.0, &v) && GfIsClose(v, -15.0, 1e-10))) {
+            std::cerr << testId << ": " << splineId
+                      << ": truncated.Eval(-15) = " << v
+                      << ", expected -15.0" << std::endl;
+            result = false;
+        }
+    }
+
+    return result;
+}
+
+bool
 TestTruncate()
 {
     return TestTruncateBaseCases()
         && TestTruncateMuseumCases()
-        && TestTruncateSpecificCases();
+        && TestTruncateSpecificCases()
+        && TestTruncatePureExtrapolation();
 }
 
 template <typename T>
