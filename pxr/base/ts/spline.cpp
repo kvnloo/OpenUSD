@@ -109,6 +109,67 @@ bool TsSpline::operator!=(const TsSpline &other) const
 ////////////////////////////////////////////////////////////////////////////////
 // Value types
 
+bool TsSpline::CanSetValueType(
+    TfType valueType,
+    std::string* const reasonOut) const
+{
+    // This is essentially the same as CanSetKnot() for a knot of the given
+    // valueType, but it also checks for supported value types and has more
+    // specific error messages.
+
+    // If the spline is already of valueType then succeed.
+    if (_GetData()->isTyped && valueType == GetValueType()) {
+        return true;
+    }
+
+    // Fail if this is not a supported value type.
+    if (!TsSpline::IsSupportedValueType(valueType)) {
+        if (reasonOut) {
+            *reasonOut = TfStringPrintf(
+                "The value type '%s' is not supported by TsSpline.",
+                valueType.GetTypeName().c_str());
+        }
+        return false;
+    }
+
+    // If the data is typed and matches the spline then we've already returned
+    // true above, so any typed data is a mismatch. Fail.
+    if (_GetData()->isTyped)
+    {
+        if (reasonOut)
+        {
+            *reasonOut = TfStringPrintf(
+                "Cannot change spline of value type '%s' into a spline of"
+                " value type '%s'",
+                GetValueType().GetTypeName().c_str(),
+                valueType.GetTypeName().c_str());
+        }
+        return false;
+    }
+
+    // The valueType is supported and data is untyped, return true.
+    return true;
+}
+
+bool TsSpline::SetValueType(TfType valueType)
+{
+    std::string errorMsg;
+
+    if (!CanSetValueType(valueType, &errorMsg)) {
+        TF_CODING_ERROR(errorMsg);
+        return false;
+    }
+
+    // _PrepareForWrite does two things: it sets the valueType if the value is
+    // not yet typed, and it ensures that the _data pointer is not shared. We
+    // don't want to unshare _data unecessarily so only call _PrepareForWrite if
+    // we're actually setting the valueType on an untyped spline.
+    if (!_GetData()->isTyped) {
+        _PrepareForWrite(valueType);
+    }
+    return true;
+}
+
 TfType TsSpline::GetValueType() const
 {
     return _GetData()->GetValueType();
@@ -314,6 +375,8 @@ bool TsSpline::CanSetKnot(
     const TsKnot &knot,
     std::string* const reasonOut) const
 {
+    // This is essentially the same as CanSetValueType(knot.GetValueType())
+    // but it returns a more specific error message.
     if (_GetData()->isTyped && knot.GetValueType() != GetValueType())
     {
         if (reasonOut)
@@ -532,9 +595,18 @@ bool TsSpline::DoSidesDiffer(
 {
     // Simple implementation.  Could probably be faster.
     double preValue = 0, value = 0;
-    EvalPreValue(time, &preValue);
-    Eval(time, &value);
-    return (value == preValue);
+    bool hasPreValue = EvalPreValue(time, &preValue);
+    bool hasValue = Eval(time, &value);
+    if (hasPreValue != hasValue) {
+        // One side has a value, the other does not. They differ.
+        return true;
+    } else if (hasValue) {
+        // Both sides have a value.
+        return (value != preValue);
+    } else {
+        // Neither side has a value. They do not differ.
+        return false;
+    }
 }
 
 
@@ -595,8 +667,8 @@ TsSpline::_Sample(
     // Make sure that splineSamples is empty.
     sampleData.Clear();
 
-    // Do not bother to sample empty data.
-    if (_data || !_data->times.empty()) {
+    // Only sample if there's something there.
+    if (_data && !_data->times.empty()) {
 
         Ts_Sample(_data.get(), timeInterval,
                   timeScale, valueScale, tolerance,
