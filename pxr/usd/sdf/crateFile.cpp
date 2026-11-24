@@ -327,7 +327,8 @@ struct _DedupEqual {
 
     template <class T>
     bool operator()(VtArray<T> const &x, VtArray<T> const &y) const {
-        if constexpr (_IsBitwiseDedup<T>::value) {
+        // REMOVAL CONTROL (fork CI only): array keys fall back to operator==.
+        if constexpr (false && _IsBitwiseDedup<T>::value) {
             return x.size() == y.size() &&
                 (x.IsIdentical(y) || x.empty() ||
                  memcmp(x.cdata(), y.cdata(), sizeof(T) * x.size()) == 0);
