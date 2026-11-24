@@ -12,6 +12,35 @@ from pxr import Gf, Ts
 import unittest
 
 class TestBugs(unittest.TestCase):
+    def testUSD_12830(self):
+        # A bounded clip beyond either end must preserve linear extrapolation.
+        spline = Ts.Spline('double')
+        for time in (0.0, 10.0):
+            knot = Ts.Knot('double')
+            knot.SetTime(time)
+            knot.SetValue(time)
+            knot.SetNextInterpolation(Ts.InterpLinear)
+            spline.SetKnot(knot)
+        linear = Ts.Extrapolation(Ts.ExtrapLinear)
+        spline.SetPreExtrapolation(linear)
+        spline.SetPostExtrapolation(linear)
+        block = Ts.Extrapolation(Ts.ExtrapValueBlock)
+
+        for lo, hi, times in (
+            (5.0, 20.0, (6.0, 15.0, 18.0)),  # crosses last knot
+            (12.0, 20.0, (13.0, 15.0, 18.0)), # beyond last knot
+            (-20.0, -12.0, (-18.0, -15.0, -13.0)), # before first knot
+        ):
+            with self.subTest(interval=(lo, hi)):
+                truncated = spline.GetTruncated(
+                    Gf.Interval(lo, hi), block, block)
+                for time in times:
+                    self.assertAlmostEqual(spline.Eval(time), time)
+                    self.assertAlmostEqual(truncated.Eval(time), time)
+                    self.assertAlmostEqual(truncated.EvalDerivative(time), 1.0)
+                self.assertIsNone(truncated.Eval(lo - 1.0))
+                self.assertIsNone(truncated.Eval(hi + 1.0))
+
     def testUSD_11046(self):
         """
         An uninitialized read was leading to the possibility that we could read
