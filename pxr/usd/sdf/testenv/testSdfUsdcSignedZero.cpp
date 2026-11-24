@@ -12,6 +12,7 @@
 #include "pxr/base/gf/quatd.h"
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec3f.h"
+#include "pxr/base/gf/vec3h.h"
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/vt/array.h"
@@ -46,6 +47,18 @@ def "p"
     float[] ea = edit [ append 0 ]
     float[] eb = edit [ append -0 ]
 }
+
+# The values below have no positive-zero twin.  The usdc writer stores small
+# vectors and matrices inline as int8 components, so it must not inline a
+# negative zero, which an int8 cannot hold.
+def "q"
+{
+    float3 ia = (-0, 1, 2)
+    half3 ih = (1, -0, 2)
+    matrix2d md = ( (-0, 0), (0, 1) )
+    matrix2d mo = ( (1, -0), (0, 1) )
+    double s = -0
+}
 )";
 
 template <class T>
@@ -74,7 +87,9 @@ _BitwiseEqual(VtArrayEdit<T> const &x, VtArrayEdit<T> const &y)
 static VtValue
 _GetDefault(SdfLayerHandle const &layer, std::string const &name)
 {
-    return layer->GetField(SdfPath("/p." + name), SdfFieldKeys->Default);
+    SdfPath const path(name.find('.') == std::string::npos ?
+                       "/p." + name : "/" + name);
+    return layer->GetField(path, SdfFieldKeys->Default);
 }
 
 // Check that attribute `name` has a value of type T in `src` and the same
@@ -114,6 +129,10 @@ main(int argc, char const *argv[])
         _GetDefault(src, "b").UncheckedGet<VtFloatArray>()[0]));
     TF_AXIOM(std::signbit(
         _GetDefault(src, "vb").UncheckedGet<GfVec3d>()[0]));
+    TF_AXIOM(std::signbit(
+        _GetDefault(src, "q.ia").UncheckedGet<GfVec3f>()[0]));
+    TF_AXIOM(std::signbit(
+        _GetDefault(src, "q.mo").UncheckedGet<GfMatrix2d>()[0][1]));
 
     TF_AXIOM(src->Export("signedZero.usdc"));
     SdfLayerRefPtr dst = SdfLayer::FindOrOpen("signedZero.usdc");
@@ -141,6 +160,12 @@ main(int argc, char const *argv[])
     for (char const *name: {"ea", "eb"}) {
         failures += _CheckRoundTrip<VtArrayEdit<float>>(src, dst, name);
     }
+    failures += _CheckRoundTrip<GfVec3f>(src, dst, "q.ia");
+    failures += _CheckRoundTrip<GfVec3h>(src, dst, "q.ih");
+    for (char const *name: {"q.md", "q.mo"}) {
+        failures += _CheckRoundTrip<GfMatrix2d>(src, dst, name);
+    }
+    failures += _CheckRoundTrip<double>(src, dst, "q.s");
 
     printf("%d failure(s)\n", failures);
     fflush(stdout);

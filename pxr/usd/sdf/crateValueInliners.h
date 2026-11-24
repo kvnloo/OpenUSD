@@ -10,6 +10,7 @@
 #include "pxr/pxr.h"
 #include "pxr/base/gf/traits.h"
 
+#include <cmath>
 #include <type_traits>
 #include <limits>
 #include <cstdint>
@@ -21,13 +22,24 @@ PXR_NAMESPACE_OPEN_SCOPE
 namespace Sdf_CrateValueInliners
 {
 
+// Return true if \p x is a zero with its sign bit set.  Such a value compares
+// equal to zero, so checks that use operator== cannot tell it apart.
+template <class T>
+inline bool _IsNegativeZero(T const &x) {
+    return x == T(0) && std::signbit(static_cast<double>(x));
+}
+
 // Return true and set \p *dst if \p src can be exactly represented as a Dst
 // instance.  This only works for numeric types, and it checks range before
-// doing the conversion.
+// doing the conversion.  A negative zero is not exactly represented by an
+// integer type, since converting it back yields a positive zero.
 template <class Src, class Dst>
 inline bool _IsExactlyRepresented(Src const &src, Dst *dst) {
     Src min = static_cast<Src>(std::numeric_limits<Dst>::lowest());
     Src max = static_cast<Src>(std::numeric_limits<Dst>::max());
+    if (std::is_integral<Dst>::value && _IsNegativeZero(src)) {
+        return false;
+    }
     if (min <= src && src <= max &&
         static_cast<Src>(static_cast<Dst>(src)) == src) {
         *dst = static_cast<Dst>(src);
@@ -114,8 +126,8 @@ _DecodeInline(T *vec, uint32_t in) {
 }
 
 ////////////////////////////////////////////////////////////////////////
-// Inline GfMatrices when they are all zeros off the diagonal and the diagonal
-// entries are exactly represented by int8_t.
+// Inline GfMatrices when they are all positive zeros off the diagonal and the
+// diagonal entries are exactly represented by int8_t.
 template <class Matrix>
 typename std::enable_if<GfIsGfMatrix<Matrix>::value, bool>::type
 _EncodeInline(Matrix m, uint32_t *out) {
@@ -127,15 +139,16 @@ _EncodeInline(Matrix m, uint32_t *out) {
     int8_t diag[Matrix::numRows];
     for (int i = 0; i != Matrix::numRows; ++i) {
         for (int j = 0; j != Matrix::numColumns; ++j) {
-            if (((i != j) && m[i][j] != 0) ||
+            if (((i != j) &&
+                 (m[i][j] != 0 || _IsNegativeZero(m[i][j]))) ||
                 ((i == j) && !_IsExactlyRepresented(m[i][j], &diag[i]))) {
                 return false;
             }
         }
     }
 
-    // All zeros off diagonal and diagonal is exactly represented by int8_t's --
-    // store inline.
+    // All positive zeros off diagonal and diagonal is exactly represented by
+    // int8_t's -- store inline.
     memcpy(out, diag, sizeof(diag));
     return true;
 }
