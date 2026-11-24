@@ -1,0 +1,47 @@
+{
+  "schemas": {
+    "PhysicsCollisionAPI": {
+      "attributes": {
+        "physics:collisionEnabled": "bool"
+      }
+    },
+    "PhysicsMassAPI": {
+      "attributes": {
+        "physics:mass": "float"
+      }
+    },
+    "PhysicsMeshCollisionAPI": {
+      "allowed_values": {
+        "physics:approximation": [
+          "none",
+          "convexDecomposition",
+          "convexHull",
+          "boundingSphere",
+          "boundingCube",
+          "meshSimplification"
+        ]
+      },
+      "attributes": {
+        "physics:approximation": "uniform token"
+      }
+    },
+    "PhysicsRigidBodyAPI": {
+      "attributes": {
+        "physics:rigidBodyEnabled": "bool"
+      }
+    },
+    "PhysicsScene": {
+      "attributes": {
+        "physics:gravityDirection": "vector3f",
+        "physics:gravityMagnitude": "float"
+      }
+    }
+  },
+  "source": {
+    "artifact_id": 11065708454,
+    "path": "lib/usd/usdPhysics/resources/usdPhysics/schema.usda",
+    "repository": "kvnloo/OpenUSD",
+    "run_id": 36633495685,
+    "sha256": "86e189bb4eeb853394faee3612ceccfae19e6e5327be0f89215f3fdb1a60df90"
+  }
+}
