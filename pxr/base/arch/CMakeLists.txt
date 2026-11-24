@@ -255,3 +255,17 @@ pxr_register_test(testArchVirtualMemory
 pxr_register_test(testArchVsnprintf
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testArchVsnprintf"
 )
+
+# The raw Linux RV64 execve path is exercised only on RISC-V Linux.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64")
+    pxr_build_test(testArchRiscvSupport
+        LIBRARIES
+            arch
+        CPPFILES
+            testenv/testArchRiscvSupport.cpp
+    )
+    pxr_register_test(testArchRiscvSupport
+        COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testArchRiscvSupport"
+    )
+endif()
