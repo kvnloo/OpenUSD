@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Validation",
+    "id": 109628280217,
+    "conclusion": "success",
+    "required": true,
+    "html_url": "https://github.com/kvnloo/OpenUSD/actions/runs/36633495685/job/109628280217"
+  },
+  {
+    "name": "Linux",
+    "id": 109628630391,
+    "conclusion": "success",
+    "required": true,
+    "html_url": "https://github.com/kvnloo/OpenUSD/actions/runs/36633495685/job/109628630391"
+  },
+  {
+    "name": "macOS",
+    "id": 109628630408,
+    "conclusion": "success",
+    "required": true,
+    "html_url": "https://github.com/kvnloo/OpenUSD/actions/runs/36633495685/job/109628630408"
+  },
+  {
+    "name": "Wasm (Wasm)",
+    "id": 109628630519,
+    "conclusion": "success",
+    "required": true,
+    "html_url": "https://github.com/kvnloo/OpenUSD/actions/runs/36633495685/job/109628630519"
+  },
+  {
+    "name": "Wasm (Wasm64)",
+    "id": 109628630583,
+    "conclusion": "success",
+    "required": true,
+    "html_url": "https://github.com/kvnloo/OpenUSD/actions/runs/36633495685/job/109628630583"
+  },
+  {
+    "name": "Windows",
+    "id": 109628630709,
+    "conclusion": "success",
+    "required": true,
+    "html_url": "https://github.com/kvnloo/OpenUSD/actions/runs/36633495685/job/109628630709"
+  },
+  {
+    "name": "GPUTests",
+    "id": 109653601646,
+    "conclusion": "skipped",
+    "required": false,
+    "html_url": "https://github.com/kvnloo/OpenUSD/actions/runs/36633495685/job/109653601646"
+  }
+]
